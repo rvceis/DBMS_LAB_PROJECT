@@ -152,6 +152,17 @@ def create_metadata():
                 user_id=user_id,
                 allow_additional_fields=allow_additional,
             )
+    
+    # Validate values against schema
+    from ..services.validation_engine import ValidationEngine
+    validator = ValidationEngine()
+    validation_errors = validator.validate_record_values(schema, values)
+    
+    if validation_errors:
+        return jsonify({
+            "error": "Validation failed",
+            "validation_errors": validation_errors
+        }), 400
 
     # Create metadata record
     r = MetadataRecord(

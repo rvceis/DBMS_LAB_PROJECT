@@ -27,22 +27,28 @@ import {
   IconButton,
   Stack,
 } from '@mui/material';
-import { Edit2, Trash2, Plus, Copy } from 'lucide-react';
+import { Edit2, Trash2, Plus } from 'lucide-react';
 import { useSchemaStore } from '@/stores/schemaStore';
+import type { SchemaField } from '@/stores/schemaStore';
 import { useAssetTypesStore } from '@/stores/assetTypesStore';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
+import { ConstraintBuilder } from '@/components/common/ConstraintBuilder';
 
 export const Schemas = () => {
-  const { schemas, fetchSchemas, createSchema, updateSchema, selectedSchema, selectSchema, addField, deleteField } =
+  const { schemas, fetchSchemas, createSchema, updateSchema, selectedSchema, selectSchema, addField, updateField, deleteField } =
     useSchemaStore();
   const { assetTypes, fetchAssetTypes } = useAssetTypesStore();
   const [openDialog, setOpenDialog] = useState(false);
   const [openFieldDialog, setOpenFieldDialog] = useState(false);
   const [editDialog, setEditDialog] = useState<{ open: boolean; id?: number; name?: string }>({ open: false });
+  const [fieldConstraints, setFieldConstraints] = useState<any>({});
+  const [editFieldDialog, setEditFieldDialog] = useState<{ open: boolean; field?: any }>({ open: false });
+  const [editFieldType, setEditFieldType] = useState<SchemaField['field_type']>('string');
+  const [editFieldRequired, setEditFieldRequired] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState('');
   const { register, handleSubmit, reset, formState: { errors } } = useForm();
-  const { register: registerField, handleSubmit: handleFieldSubmit, reset: resetField } = useForm();
+  const { register: registerField, handleSubmit: handleFieldSubmit, reset: resetField, watch: watchField } = useForm();
 
   useEffect(() => {
     fetchSchemas();
@@ -71,9 +77,11 @@ export const Schemas = () => {
         field_name: data.fieldName,
         field_type: data.fieldType,
         is_required: data.isRequired || false,
+        constraints: Object.keys(fieldConstraints || {}).length > 0 ? fieldConstraints : null,
       });
       toast.success('Field added!');
       setOpenFieldDialog(false);
+      setFieldConstraints({});
       resetField();
     } catch (error) {
       toast.error('Failed to add field');
@@ -173,13 +181,15 @@ export const Schemas = () => {
                       <Edit2 size={18} />
                     </IconButton>
                   </Stack>
-                  <Button
-                    size="small"
-                    startIcon={<Plus size={16} />}
-                    onClick={() => setOpenFieldDialog(true)}
-                  >
-                    Add Field
-                  </Button>
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small"
+                      startIcon={<Plus size={16} />}
+                      onClick={() => setOpenFieldDialog(true)}
+                    >
+                      Add Field
+                    </Button>
+                  </Stack>
                 </Box>
 
                 <TableContainer>
@@ -189,19 +199,146 @@ export const Schemas = () => {
                         <TableCell>Field Name</TableCell>
                         <TableCell>Type</TableCell>
                         <TableCell>Required</TableCell>
+                        <TableCell>Constraints</TableCell>
                         <TableCell align="right">Actions</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {selectedSchema.fields?.map((field) => (
                         <TableRow key={field.id} hover>
-                          <TableCell>{field.field_name}</TableCell>
-                          <TableCell>{field.field_type}</TableCell>
-                          <TableCell>{field.is_required ? '✓' : '-'}</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>{field.field_name}</TableCell>
+                          <TableCell>
+                            <FormControl fullWidth size="small">
+                              <Select
+                                value={
+                                  selectedSchema.fields.find((f) => f.id === field.id)?.field_type ?? field.field_type
+                                }
+                                onChange={async (e) => {
+                                  if (!selectedSchema) {
+                                    toast.error('No schema selected');
+                                    return;
+                                  }
+                                  try {
+                                    const newType = e.target.value as SchemaField['field_type'];
+                                    await updateField(selectedSchema.id, field.field_name, { field_type: newType });
+                                    toast.success('Type updated');
+                                    // Optimistically update UI to reflect new type immediately
+                                    const optimistic = {
+                                      ...selectedSchema,
+                                      fields: selectedSchema.fields.map((f) =>
+                                        f.id === field.id ? { ...f, field_type: newType } : f
+                                      ),
+                                    } as typeof selectedSchema;
+                                    selectSchema(optimistic);
+                                  } catch (err: any) {
+                                    console.error('Type update error:', err);
+                                    toast.error(err?.message || 'Failed to update type');
+                                  }
+                                }}
+                              >
+                                <MenuItem value="string">String</MenuItem>
+                                <MenuItem value="integer">Integer</MenuItem>
+                                <MenuItem value="float">Float</MenuItem>
+                                <MenuItem value="boolean">Boolean</MenuItem>
+                                <MenuItem value="date">Date</MenuItem>
+                                <MenuItem value="json">JSON</MenuItem>
+                                <MenuItem value="array">Array</MenuItem>
+                                <MenuItem value="object">Object</MenuItem>
+                              </Select>
+                            </FormControl>
+                          </TableCell>
+                          <TableCell>
+                            <FormControlLabel
+                              control={
+                                <Checkbox
+                                  checked={!!selectedSchema.fields.find((f) => f.id === field.id)?.is_required}
+                                  onChange={async (e) => {
+                                    if (!selectedSchema) {
+                                      toast.error('No schema selected');
+                                      return;
+                                    }
+                                    try {
+                                      await updateField(selectedSchema.id, field.field_name, { is_required: e.target.checked });
+                                      toast.success('Required updated');
+                                      // Optimistically update UI to reflect new required state immediately
+                                      const newRequired = e.target.checked;
+                                      const optimistic = {
+                                        ...selectedSchema,
+                                        fields: selectedSchema.fields.map((f) =>
+                                          f.id === field.id ? { ...f, is_required: newRequired } : f
+                                        ),
+                                      } as typeof selectedSchema;
+                                      selectSchema(optimistic);
+                                    } catch (err: any) {
+                                      console.error('Required update error:', err);
+                                      toast.error(err?.message || 'Failed to update required');
+                                    }
+                                  }}
+                                />
+                              }
+                              label={
+                                (selectedSchema.fields.find((f) => f.id === field.id)?.is_required ? 'Required' : 'Optional')
+                              }
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {field.constraints && Object.keys(field.constraints).length > 0 ? (
+                              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                                {field.constraints.min !== undefined && (
+                                  <Chip label={`Min: ${field.constraints.min}`} size="small" color="info" variant="outlined" />
+                                )}
+                                {field.constraints.max !== undefined && (
+                                  <Chip label={`Max: ${field.constraints.max}`} size="small" color="info" variant="outlined" />
+                                )}
+                                {field.constraints.min_length !== undefined && (
+                                  <Chip label={`Min Length: ${field.constraints.min_length}`} size="small" color="info" variant="outlined" />
+                                )}
+                                {field.constraints.max_length !== undefined && (
+                                  <Chip label={`Max Length: ${field.constraints.max_length}`} size="small" color="info" variant="outlined" />
+                                )}
+                                {field.constraints.pattern && (
+                                  <Chip 
+                                    label={field.constraints.pattern_name || 'Pattern'} 
+                                    size="small" 
+                                    color="warning" 
+                                    variant="outlined"
+                                    icon={<Edit2 size={12} />}
+                                  />
+                                )}
+                                {field.constraints.enum && field.constraints.enum.length > 0 && (
+                                  <Chip 
+                                    label={`Enum (${field.constraints.enum.length})`} 
+                                    size="small" 
+                                    color="success" 
+                                    variant="outlined"
+                                    title={field.constraints.enum.join(', ')}
+                                  />
+                                )}
+                                {field.constraints.unique && (
+                                  <Chip label="Unique" size="small" color="primary" variant="outlined" />
+                                )}
+                                {field.constraints.primary_key && (
+                                  <Chip label="PK" size="small" color="error" variant="outlined" />
+                                )}
+                              </Stack>
+                            ) : (
+                              <Typography variant="caption" color="text.secondary">None</Typography>
+                            )}
+                          </TableCell>
                           <TableCell align="right">
-                            <IconButton size="small" onClick={() => onDeleteField(field.field_name)}>
-                              <Trash2 size={16} />
-                            </IconButton>
+                            <Stack direction="row" spacing={1} justifyContent="flex-end">
+                              <IconButton size="small" onClick={() => {
+                                setEditFieldDialog({ open: true, field });
+                                setEditFieldType(field.field_type);
+                                setEditFieldRequired(!!field.is_required);
+                                setFieldConstraints(field.constraints || {});
+                              }}>
+                                <Edit2 size={16} />
+                              </IconButton>
+                              <IconButton size="small" onClick={() => onDeleteField(field.field_name)}>
+                                <Trash2 size={16} />
+                              </IconButton>
+                            </Stack>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -229,7 +366,7 @@ export const Schemas = () => {
                 label="Schema Name"
                 fullWidth
                 error={!!errors.schemaName}
-                helperText={errors.schemaName?.message}
+                helperText={errors.schemaName?.message as string}
               />
               <FormControl fullWidth>
                 <InputLabel>Asset Type</InputLabel>
@@ -288,16 +425,28 @@ export const Schemas = () => {
                   <MenuItem value="float">Float</MenuItem>
                   <MenuItem value="boolean">Boolean</MenuItem>
                   <MenuItem value="date">Date</MenuItem>
+                  <MenuItem value="json">JSON</MenuItem>
+                  <MenuItem value="array">Array</MenuItem>
+                  <MenuItem value="object">Object</MenuItem>
                 </Select>
               </FormControl>
               <FormControlLabel
                 control={<Checkbox {...registerField('isRequired')} />}
                 label="Required"
               />
+              
+              <ConstraintBuilder
+                fieldType={watchField('fieldType') || 'string'}
+                constraints={fieldConstraints}
+                onChange={setFieldConstraints}
+              />
             </Stack>
 
             <DialogActions sx={{ mt: 3 }}>
-              <Button onClick={() => setOpenFieldDialog(false)}>Cancel</Button>
+              <Button onClick={() => {
+                setOpenFieldDialog(false);
+                setFieldConstraints({});
+              }}>Cancel</Button>
               <Button variant="contained" type="submit">
                 Add
               </Button>
@@ -322,6 +471,82 @@ export const Schemas = () => {
         <DialogActions>
           <Button onClick={() => setEditDialog({ open: false })}>Cancel</Button>
           <Button variant="contained" onClick={saveSchemaEdit}>Save</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Field Dialog */}
+      <Dialog open={editFieldDialog.open} onClose={() => setEditFieldDialog({ open: false })} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Field</DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          {editFieldDialog.field && (
+            <Stack spacing={3}>
+              <TextField label="Field Name" fullWidth value={editFieldDialog.field.field_name} disabled />
+
+              <FormControl fullWidth>
+                <InputLabel>Type</InputLabel>
+                <Select
+                  value={editFieldType}
+                  label="Type"
+                  onChange={(e) => setEditFieldType(e.target.value as SchemaField['field_type'])}
+                >
+                  <MenuItem value="string">String</MenuItem>
+                  <MenuItem value="integer">Integer</MenuItem>
+                  <MenuItem value="float">Float</MenuItem>
+                  <MenuItem value="boolean">Boolean</MenuItem>
+                  <MenuItem value="date">Date</MenuItem>
+                  <MenuItem value="json">JSON</MenuItem>
+                  <MenuItem value="array">Array</MenuItem>
+                  <MenuItem value="object">Object</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControlLabel
+                control={<Checkbox checked={editFieldRequired} onChange={(e) => setEditFieldRequired(e.target.checked)} />}
+                label="Required"
+              />
+
+              <ConstraintBuilder
+                fieldType={editFieldType}
+                constraints={fieldConstraints}
+                onChange={setFieldConstraints}
+              />
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditFieldDialog({ open: false })}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={async () => {
+              if (!selectedSchema || !editFieldDialog.field) return;
+              try {
+                const newConstraints = Object.keys(fieldConstraints || {}).length ? fieldConstraints : null;
+                await updateField(selectedSchema.id, editFieldDialog.field.field_name, {
+                  field_type: editFieldType,
+                  is_required: editFieldRequired,
+                  constraints: newConstraints,
+                });
+                // Optimistic UI update for the edited field
+                const optimistic = {
+                  ...selectedSchema,
+                  fields: selectedSchema.fields.map((f) =>
+                    f.field_name === editFieldDialog.field!.field_name
+                      ? { ...f, field_type: editFieldType, is_required: editFieldRequired, constraints: newConstraints || undefined }
+                      : f
+                  ),
+                } as typeof selectedSchema;
+                selectSchema(optimistic);
+                toast.success('Field updated');
+                setEditFieldDialog({ open: false });
+                setFieldConstraints({});
+                fetchSchemas();
+              } catch (err) {
+                toast.error('Failed to update field');
+              }
+            }}
+          >
+            Save Changes
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

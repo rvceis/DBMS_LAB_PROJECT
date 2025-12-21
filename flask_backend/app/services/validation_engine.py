@@ -19,15 +19,16 @@ class ValidationEngine:
     ]
     
     # Valid type conversions (old_type -> new_type)
+    # More flexible for json/array/object since they can hold any data
     TYPE_COMPATIBILITY = {
-        'string': ['string'],  # String can only stay string
-        'integer': ['integer', 'float', 'string'],  # Int can become float or string
-        'float': ['float', 'string'],  # Float can become string
-        'boolean': ['boolean', 'string'],  # Bool can become string
-        'date': ['date', 'string'],  # Date can become string
-        'json': ['json', 'string'],  # JSON can become string
-        'array': ['array', 'string'],  # Array can become string
-        'object': ['object', 'string']  # Object can become string
+        'string': ['string', 'json', 'array', 'object'],  # String can become JSON types
+        'integer': ['integer', 'float', 'string', 'json', 'array', 'object'],  # Int can convert to anything
+        'float': ['float', 'string', 'json', 'array', 'object'],  # Float to anything
+        'boolean': ['boolean', 'string', 'json', 'array', 'object'],  # Bool to anything
+        'date': ['date', 'string', 'json', 'array', 'object'],  # Date to anything
+        'json': ['json', 'string', 'array', 'object'],  # JSON can convert to other JSON types or string
+        'array': ['array', 'string', 'json', 'object'],  # Array similarly flexible
+        'object': ['object', 'string', 'json', 'array']  # Object similarly flexible
     }
     
     def validate_fields(self, fields: List[Dict[str, Any]]) -> List[str]:
@@ -359,5 +360,74 @@ class ValidationEngine:
         
         if 'enum' in constraints and value not in constraints['enum']:
             return f"Value {value} not in enum {constraints['enum']}"
+        
+        return None
+    
+    def validate_record_values(self, schema, values: Dict[str, Any]) -> List[Dict[str, str]]:
+        """
+        Validate metadata record values against schema
+        
+        Args:
+            schema: SchemaModel instance
+            values: Dict of field_name -> value
+        
+        Returns:
+            List of error dicts with 'field' and 'message'
+        """
+        errors = []
+        active_fields = [f for f in schema.fields if not f.is_deleted]
+        
+        # Check required fields
+        for field in active_fields:
+            if field.is_required and field.field_name not in values:
+                errors.append({
+                    "field": field.field_name,
+                    "message": f"{field.field_name} is required"
+                })
+        
+        # Validate each value
+        for field_name, value in values.items():
+            field = next((f for f in active_fields if f.field_name == field_name), None)
+            
+            if not field:
+                if not schema.allow_additional_fields:
+                    errors.append({
+                        "field": field_name,
+                        "message": f"{field_name} is not defined in schema"
+                    })
+                continue
+            
+            # Skip null/empty for non-required fields
+            if not field.is_required and (value is None or value == ''):
+                continue
+            
+            # Type validation
+            error = self._validate_field_value(field, value)
+            if error:
+                errors.append({"field": field_name, "message": error})
+        
+        return errors
+    
+    def _validate_field_value(self, field: SchemaField, value: Any) -> Optional[str]:
+        """Validate a single field value"""
+        
+        # Type checking and conversion
+        try:
+            if field.field_type == 'integer':
+                int(value)
+            elif field.field_type == 'float':
+                float(value)
+            elif field.field_type == 'boolean':
+                if not isinstance(value, bool):
+                    if isinstance(value, str) and value.lower() not in ('true', 'false', '0', '1', 'yes', 'no'):
+                        return f"{field.field_name} must be a boolean"
+        except (ValueError, TypeError):
+            return f"{field.field_name} must be a valid {field.field_type}"
+        
+        # Constraint validation
+        if field.constraints:
+            error = self._check_constraint_violation(value, field.field_type, field.constraints)
+            if error:
+                return f"{field.field_name}: {error}"
         
         return None
