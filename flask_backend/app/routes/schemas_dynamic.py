@@ -105,6 +105,87 @@ def create_schema():
         return jsonify({"error": f"Failed to create schema: {str(e)}"}), 500
 
 
+@schemas_bp.route("/compare", methods=["POST"])
+def compare_schemas():
+    """Compare two schema versions"""
+    data = request.get_json() or {}
+    schema_id_1 = data.get("schema_id_1")
+    schema_id_2 = data.get("schema_id_2")
+    
+    if not schema_id_1 or not schema_id_2:
+        return jsonify({"error": "schema_id_1 and schema_id_2 required"}), 400
+    
+    schema1 = SchemaModel.query.get(schema_id_1)
+    schema2 = SchemaModel.query.get(schema_id_2)
+    
+    if not schema1 or not schema2:
+        return jsonify({"error": "one or both schemas not found"}), 404
+    
+    # Get fields for both schemas
+    fields1 = {f.field_name: f for f in schema1.fields if not f.is_deleted}
+    fields2 = {f.field_name: f for f in schema2.fields if not f.is_deleted}
+    
+    # Calculate differences
+    added_fields = []
+    removed_fields = []
+    modified_fields = []
+    unchanged_fields = []
+    
+    # Check for added and modified fields
+    for name, field2 in fields2.items():
+        if name not in fields1:
+            added_fields.append({
+                "field_name": name,
+                "field_type": field2.field_type,
+                "is_required": field2.is_required,
+                "default_value": field2.default_value
+            })
+        else:
+            field1 = fields1[name]
+            if (field1.field_type != field2.field_type or 
+                field1.is_required != field2.is_required or
+                field1.constraints != field2.constraints):
+                modified_fields.append({
+                    "field_name": name,
+                    "old_type": field1.field_type,
+                    "new_type": field2.field_type,
+                    "old_required": field1.is_required,
+                    "new_required": field2.is_required,
+                    "old_constraints": field1.constraints,
+                    "new_constraints": field2.constraints
+                })
+            else:
+                unchanged_fields.append(name)
+    
+    # Check for removed fields
+    for name in fields1:
+        if name not in fields2:
+            removed_fields.append({
+                "field_name": name,
+                "field_type": fields1[name].field_type,
+                "is_required": fields1[name].is_required
+            })
+    
+    total_changes = len(added_fields) + len(removed_fields) + len(modified_fields)
+    
+    return jsonify({
+        "schema1": schema1.to_dict(include_fields=True),
+        "schema2": schema2.to_dict(include_fields=True),
+        "comparison": {
+            "added_fields": added_fields,
+            "removed_fields": removed_fields,
+            "modified_fields": modified_fields,
+            "unchanged_fields": unchanged_fields
+        },
+        "summary": {
+            "total_changes": total_changes,
+            "additions": len(added_fields),
+            "removals": len(removed_fields),
+            "modifications": len(modified_fields)
+        }
+    })
+
+
 @schemas_bp.route("/<int:schema_id>", methods=["GET"])
 def get_schema(schema_id):
     """Get detailed schema information"""
@@ -204,17 +285,25 @@ def modify_field(schema_id, field_name):
         return jsonify({"error": "admin or editor required"}), 403
     
     data = request.get_json() or {}
+    print(f"[MODIFY_FIELD] schema_id={schema_id}, field_name={field_name}, data={data}", flush=True)
     
+    # Accept both frontend and backend key styles
+    new_type = data.get("type") or data.get("field_type")
+    new_required = data.get("required")
+    if new_required is None:
+        new_required = data.get("is_required")
+
     try:
         field = schema_manager.modify_field(
             schema_id=schema_id,
             field_name=field_name,
             user_id=user_id,
-            new_type=data.get("type"),
-            new_required=data.get("required"),
+            new_type=new_type,
+            new_required=new_required,
             new_constraints=data.get("constraints"),
             new_description=data.get("description")
         )
+        print(f"[MODIFY_FIELD] Success: {field.to_dict()}", flush=True)
         
         return jsonify({
             "success": True,
@@ -222,8 +311,12 @@ def modify_field(schema_id, field_name):
         })
         
     except ValueError as e:
+        print(f"[MODIFY_FIELD] ValueError: {str(e)}", flush=True)
         return jsonify({"error": str(e)}), 400
     except Exception as e:
+        print(f"[MODIFY_FIELD] Exception: {str(e)}", flush=True)
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": f"Failed to modify field: {str(e)}"}), 500
 
 
@@ -437,3 +530,41 @@ def get_fields(schema_id):
     include_deleted = request.args.get("include_deleted", "false").lower() == "true"
     fields = catalog.get_fields(schema_id, include_deleted=include_deleted)
     return jsonify(fields)
+
+
+@schemas_bp.route("/<int:schema_id>/versions", methods=["GET"])
+def get_schema_versions(schema_id):
+    """Get version history for a schema (all versions with same name and asset type)"""
+    schema = SchemaModel.query.get(schema_id)
+    if not schema:
+        return jsonify({"error": "schema not found"}), 404
+    
+    # Get all versions of this schema (same name and asset type)
+    versions = SchemaModel.query.filter_by(
+        name=schema.name,
+        asset_type_id=schema.asset_type_id
+    ).order_by(SchemaModel.version.desc()).all()
+    
+    result = []
+    for v in versions:
+        from ..models import User, ChangeLog
+        user_name = None
+        if v.created_by:
+            user = User.query.get(v.created_by)
+            user_name = user.username if user else f"User #{v.created_by}"
+        
+        # Get change logs for this version
+        changes = ChangeLog.query.filter_by(schema_id=v.id).order_by(ChangeLog.timestamp.desc()).all()
+        change_list = [{
+            "change_type": c.change_type,
+            "description": c.description,
+            "timestamp": c.timestamp.isoformat() if c.timestamp else None
+        } for c in changes]
+        
+        result.append({
+            **v.to_dict(include_fields=True),
+            "created_by_name": user_name,
+            "changes": change_list
+        })
+    
+    return jsonify(result)

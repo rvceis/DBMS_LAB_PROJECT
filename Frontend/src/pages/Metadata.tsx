@@ -40,6 +40,7 @@ import toast from 'react-hot-toast';
 import { EmptyState } from '@/components/common/EmptyState';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { useFieldValidation } from '@/hooks/useFieldValidation';
 
 export const Metadata = () => {
   const {
@@ -58,6 +59,7 @@ export const Metadata = () => {
   const { schemas, fetchSchemas } = useSchemaStore();
   const { assetTypes, fetchAssetTypes } = useAssetTypesStore();
   const { user } = useAuthStore();
+  const { errors: validationErrors, validateAll, clearErrors, clearFieldError } = useFieldValidation();
 
   const [openDialog, setOpenDialog] = useState(false);
   const [editDialog, setEditDialog] = useState<{ open: boolean; record?: any }>({ open: false });
@@ -123,6 +125,8 @@ export const Metadata = () => {
 
   const handleFieldChange = (fieldName: string, value: any) => {
     setFieldValues((prev) => ({ ...prev, [fieldName]: value }));
+    // Clear validation error when user types
+    clearFieldError(fieldName);
   };
 
   const onSubmit = async (data: any) => {
@@ -135,6 +139,17 @@ export const Metadata = () => {
         toast.error('Select a schema or enable auto-create');
         return;
       }
+      
+      // Validate fields if using existing schema
+      if (data.schemaId && selectedSchema) {
+        const activeFields = selectedSchema.fields.filter((f: any) => !f.is_deleted);
+        const errors = validateAll(fieldValues, activeFields);
+        if (Object.keys(errors).length > 0) {
+          toast.error('Please fix validation errors');
+          return;
+        }
+      }
+      
       let valuesToSend = { ...fieldValues };
       // If auto-creating schema without selecting one, require JSON values input
       if (!data.schemaId && data.createNewSchema) {
@@ -156,10 +171,40 @@ export const Metadata = () => {
         }
       }
       await createRecord({
+        // Before submitting, transform json/array/object fields if using existing schema
+        // so backend receives correct types
+        // Note: auto-create path uses JSON object input already
+        
         name: data.name,
         schema_id: data.schemaId ? parseInt(data.schemaId) : undefined,
         asset_type_id: parseInt(data.assetTypeId),
-        values: valuesToSend,
+        values: (() => {
+          if (data.schemaId && selectedSchema) {
+            const activeFields = selectedSchema.fields.filter((f: any) => !f.is_deleted);
+            const transformed = { ...valuesToSend } as Record<string, any>;
+            for (const f of activeFields) {
+              const raw = transformed[f.field_name];
+              if (raw === undefined || raw === null || raw === '') continue;
+              try {
+                if (f.field_type === 'json' || f.field_type === 'object') {
+                  transformed[f.field_name] = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                } else if (f.field_type === 'array') {
+                  if (typeof raw === 'string') {
+                    const trimmed = raw.trim();
+                    transformed[f.field_name] = trimmed.startsWith('[')
+                      ? JSON.parse(trimmed)
+                      : trimmed.split(',').map((v) => v.trim());
+                  }
+                }
+              } catch (e) {
+                toast.error(`Field '${f.field_name}' has invalid ${f.field_type} data`);
+                throw e;
+              }
+            }
+            return transformed;
+          }
+          return valuesToSend;
+        })(),
         create_new_schema: data.createNewSchema,
         tag: data.tag || undefined,
       });
@@ -216,6 +261,7 @@ export const Metadata = () => {
 
   const renderFieldInput = (field: SchemaField) => {
     const value = fieldValues[field.field_name] ?? '';
+    const error = validationErrors[field.field_name];
 
     switch (field.field_type) {
       case 'string':
@@ -226,7 +272,8 @@ export const Metadata = () => {
             value={value}
             onChange={(e) => handleFieldChange(field.field_name, e.target.value)}
             required={field.is_required}
-            helperText={field.description}
+            helperText={error || field.description}
+            error={!!error}
             size="small"
           />
         );
@@ -241,25 +288,36 @@ export const Metadata = () => {
             onChange={(e) =>
               handleFieldChange(
                 field.field_name,
-                field.field_type === 'integer' ? parseInt(e.target.value) : parseFloat(e.target.value)
+                field.field_type === 'integer' ? parseInt(e.target.value) || 0 : parseFloat(e.target.value) || 0
               )
             }
             required={field.is_required}
-            helperText={field.description}
+            helperText={error || field.description}
+            error={!!error}
             size="small"
           />
         );
       case 'boolean':
         return (
-          <FormControlLabel
-            control={
-              <Switch
-                checked={!!value}
-                onChange={(e) => handleFieldChange(field.field_name, e.target.checked)}
-              />
-            }
-            label={field.field_name}
-          />
+          <FormControl fullWidth size="small" error={!!error}>
+            <InputLabel>{field.field_name}</InputLabel>
+            <Select
+              value={value === '' ? '' : value}
+              onChange={(e) => handleFieldChange(field.field_name, e.target.value)}
+              label={field.field_name}
+            >
+              <MenuItem value="">
+                <em>None</em>
+              </MenuItem>
+              <MenuItem value={true as any}>True</MenuItem>
+              <MenuItem value={false as any}>False</MenuItem>
+            </Select>
+            {(error || field.description) && (
+              <Typography variant="caption" color={error ? 'error' : 'text.secondary'} sx={{ mt: 0.5, ml: 1.5 }}>
+                {error || field.description}
+              </Typography>
+            )}
+          </FormControl>
         );
       case 'date':
         return (
@@ -270,7 +328,40 @@ export const Metadata = () => {
             value={value}
             onChange={(e) => handleFieldChange(field.field_name, e.target.value)}
             required={field.is_required}
+            helperText={error || field.description}
+            error={!!error}
+            size="small"
             InputLabelProps={{ shrink: true }}
+          />
+        );
+      case 'json':
+      case 'object':
+        return (
+          <TextField
+            fullWidth
+            label={`${field.field_name} (JSON)`}
+            value={value}
+            onChange={(e) => handleFieldChange(field.field_name, e.target.value)}
+            required={field.is_required}
+            helperText={error || field.description || 'Enter a valid JSON object'}
+            error={!!error}
+            multiline
+            rows={3}
+            size="small"
+          />
+        );
+      case 'array':
+        return (
+          <TextField
+            fullWidth
+            label={`${field.field_name} (Array)`}
+            value={value}
+            onChange={(e) => handleFieldChange(field.field_name, e.target.value)}
+            required={field.is_required}
+            helperText={error || field.description || 'JSON array or comma-separated values'}
+            error={!!error}
+            multiline
+            rows={2}
             size="small"
           />
         );
@@ -282,8 +373,8 @@ export const Metadata = () => {
             value={value}
             onChange={(e) => handleFieldChange(field.field_name, e.target.value)}
             required={field.is_required}
-            multiline
-            rows={2}
+            helperText={error || field.description}
+            error={!!error}
             size="small"
           />
         );
@@ -433,7 +524,7 @@ export const Metadata = () => {
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <DialogTitle>Create New Metadata Record</DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
-          <form onSubmit={handleSubmit(onSubmit)}>
+          <form id="metadata-form" onSubmit={handleSubmit(onSubmit)}>
             <Stack spacing={3}>
               {/* Basic Info */}
               <TextField {...register('name', { required: true })} label="Record Name" fullWidth required />
@@ -519,15 +610,14 @@ export const Metadata = () => {
                 </Paper>
               )}
             </Stack>
-
-            <DialogActions sx={{ mt: 3 }}>
-              <Button onClick={handleCloseDialog}>Cancel</Button>
-              <Button variant="contained" type="submit">
-                Create
-              </Button>
-            </DialogActions>
           </form>
         </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Cancel</Button>
+          <Button variant="contained" type="submit" form="metadata-form">
+            Create
+          </Button>
+        </DialogActions>
       </Dialog>
 
       {/* Detail Drawer */}
