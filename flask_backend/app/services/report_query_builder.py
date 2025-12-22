@@ -161,6 +161,19 @@ class ReportQueryBuilder:
     def execute_and_format(self, query, query_config: dict, schema: SchemaModel) -> List[Dict]:
         """Execute query and return formatted results"""
         records = query.all()
+
+        # Fallback: if no records for the exact schema, include records from
+        # other schemas within the same asset type (common when templates and
+        # uploads target sibling versions). Controlled by include_related_schemas.
+        if not records and query_config.get('include_related_schemas', True):
+            limit = query_config.get('limit', 10000)
+            records = (
+                db.session.query(MetadataRecord)
+                .filter(MetadataRecord.asset_type_id == schema.asset_type_id)
+                .order_by(MetadataRecord.created_at.desc())
+                .limit(limit)
+                .all()
+            )
         
         # Extract requested fields
         fields = query_config.get('fields', [])
