@@ -32,7 +32,7 @@ export const ReportBuilder = () => {
   const templateId = searchParams.get('template');
 
   const { schemas, fetchSchemas } = useSchemaStore();
-  const { createTemplate, updateTemplate, fetchTemplate, selectedTemplate, generateAdhocReport } = useReportStore();
+  const { createTemplate, updateTemplate, fetchTemplate, selectedTemplate, generateAdhocReport, downloadReport } = useReportStore();
 
   const [activeStep, setActiveStep] = useState(0);
   const [name, setName] = useState('');
@@ -146,7 +146,8 @@ export const ReportBuilder = () => {
       const execution = await generateAdhocReport(schemaId as number, queryConfig, format, name || 'Ad-hoc Report');
       if (execution.status === 'completed') {
         toast.success('Report generated!');
-        window.open(`/api/reports/executions/${execution.id}/download`, '_blank');
+        // Use store method to download with proper auth
+        await downloadReport(execution.id);
       } else {
         toast.success('Report generation started');
       }

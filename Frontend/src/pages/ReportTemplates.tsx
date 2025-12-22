@@ -20,7 +20,7 @@ import { useReportStore } from '@/stores/reportStore';
 import toast from 'react-hot-toast';
 
 export const ReportTemplates = () => {
-  const { templates, fetchTemplates, deleteTemplate, generateReport, loading } = useReportStore();
+  const { templates, fetchTemplates, deleteTemplate, generateReport, downloadReport, loading } = useReportStore();
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; id?: number }>({ open: false });
   const [generating, setGenerating] = useState<number | null>(null);
 
@@ -34,8 +34,8 @@ export const ReportTemplates = () => {
       const execution = await generateReport(templateId, format);
       if (execution.status === 'completed') {
         toast.success('Report generated!');
-        // Trigger download
-        window.open(`/api/reports/executions/${execution.id}/download`, '_blank');
+        // Use store method to download with proper auth
+        await downloadReport(execution.id);
       } else {
         toast.success('Report generation started. Check history for status.');
       }

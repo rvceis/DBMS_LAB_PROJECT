@@ -231,14 +231,36 @@ def get_execution(execution_id):
 
 
 @reports_bp.route('/executions/<int:execution_id>/download', methods=['GET'])
-@jwt_required()
 def download_report(execution_id):
-    """Download generated report file"""
-    user_id = int(get_jwt_identity())
+    """Download generated report file - supports token in query param for direct downloads"""
+    # Try to get token from Authorization header first
+    from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+    from flask_jwt_extended.exceptions import NoAuthorizationError
+    
+    user_id = None
+    try:
+        verify_jwt_in_request()
+        user_id = int(get_jwt_identity())
+    except NoAuthorizationError:
+        # If no header, try query parameter (for direct download links)
+        token = request.args.get('token')
+        if token:
+            try:
+                from flask_jwt_extended import decode_token
+                decoded = decode_token(token)
+                user_id = int(decoded['sub'])
+            except:
+                return jsonify({'error': 'Invalid token'}), 401
+        else:
+            return jsonify({'error': 'Authentication required'}), 401
+    
     execution = ReportExecution.query.get_or_404(execution_id)
     
     # Check permissions
     user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
     if execution.user_id != user_id and user.role != 'admin':
         return jsonify({'error': 'Unauthorized'}), 403
     
