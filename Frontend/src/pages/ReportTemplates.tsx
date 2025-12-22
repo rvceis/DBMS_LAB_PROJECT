@@ -121,17 +121,10 @@ export const ReportTemplates = () => {
                       <Chip label="Public" size="small" color="success" variant="outlined" />
                     )}
                     <Chip
-                      label={`${template.query_config?.fields?.length || 0} fields`}
+                      label={`${template.field_count || 0} fields`}
                       size="small"
                       variant="outlined"
                     />
-                    {template.query_config?.filters?.length > 0 && (
-                      <Chip
-                        label={`${template.query_config.filters.length} filters`}
-                        size="small"
-                        variant="outlined"
-                      />
-                    )}
                   </Stack>
 
                   <Stack direction="row" spacing={1} sx={{ mt: 3 }}>

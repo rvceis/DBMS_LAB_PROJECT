@@ -325,6 +325,7 @@ class ReportTemplate(db.Model):
             "created_by": self.created_by,
             "is_public": self.is_public,
             "schedule_enabled": self.schedule_enabled,
+            "field_count": len(self.query_config.get('fields', [])) if self.query_config else 0,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
