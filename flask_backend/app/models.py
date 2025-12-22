@@ -261,3 +261,126 @@ class SchemaVersion(db.Model):
             "created_by": self.created_by,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
+
+
+class ReportTemplate(db.Model):
+    """Saved report definitions"""
+    __tablename__ = "report_templates"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text)
+    
+    # What data to include
+    schema_id = db.Column(db.Integer, db.ForeignKey('schemas.id'))
+    asset_type_id = db.Column(db.Integer, db.ForeignKey('asset_types.id'))
+    
+    # Query definition (JSON)
+    query_config = db.Column(db.JSON)
+    # {
+    #   "fields": ["field1", "field2", ...],
+    #   "filters": [{"field": "status", "operator": "eq", "value": "active"}],
+    #   "sort": [{"field": "created_at", "direction": "desc"}],
+    #   "limit": 10000
+    # }
+    
+    # Display configuration
+    display_config = db.Column(db.JSON)
+    # {
+    #   "title": "Monthly Sales Report",
+    #   "columns": [{"field": "name", "label": "Product Name", "width": 200}],
+    # }
+    
+    # PDF-specific settings
+    pdf_config = db.Column(db.JSON)
+    # {
+    #   "orientation": "portrait|landscape",
+    #   "page_size": "A4|Letter",
+    #   "title": "Report Title",
+    # }
+    
+    # Access control
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    is_public = db.Column(db.Boolean, default=False)
+    
+    # Scheduling
+    schedule = db.Column(db.String(100))  # cron expression or null
+    schedule_enabled = db.Column(db.Boolean, default=False)
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    schema = db.relationship('SchemaModel', backref='report_templates')
+    asset_type = db.relationship('AssetType', backref='report_templates')
+    creator = db.relationship('User', backref='created_reports')
+    executions = db.relationship('ReportExecution', back_populates='template', cascade='all, delete-orphan')
+    
+    def to_dict(self, include_config=False):
+        data = {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "schema_id": self.schema_id,
+            "asset_type_id": self.asset_type_id,
+            "created_by": self.created_by,
+            "is_public": self.is_public,
+            "schedule_enabled": self.schedule_enabled,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+        if include_config:
+            data.update({
+                "query_config": self.query_config,
+                "display_config": self.display_config,
+                "pdf_config": self.pdf_config,
+            })
+        return data
+
+
+class ReportExecution(db.Model):
+    """History of generated reports"""
+    __tablename__ = "report_executions"
+    id = db.Column(db.Integer, primary_key=True)
+    template_id = db.Column(db.Integer, db.ForeignKey('report_templates.id'), nullable=True)
+    
+    # Who requested it
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    trigger_type = db.Column(db.String(50))  # 'manual', 'scheduled', 'api'
+    
+    # Execution details
+    started_at = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime)
+    status = db.Column(db.String(50))  # 'pending', 'running', 'completed', 'failed'
+    
+    # Results
+    format = db.Column(db.String(10))  # 'csv', 'pdf'
+    row_count = db.Column(db.Integer)
+    file_path = db.Column(db.String(500))
+    file_size = db.Column(db.Integer)  # bytes
+    error_message = db.Column(db.Text)
+    
+    # Metadata
+    query_params = db.Column(db.JSON)  # actual params used at runtime
+    execution_time_ms = db.Column(db.Integer)
+    
+    # Relationships
+    template = db.relationship('ReportTemplate', back_populates='executions')
+    user = db.relationship('User', backref='report_executions')
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "template_id": self.template_id,
+            "template_name": self.template.name if self.template else "Ad-hoc",
+            "user_id": self.user_id,
+            "trigger_type": self.trigger_type,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "status": self.status,
+            "format": self.format,
+            "row_count": self.row_count,
+            "file_path": self.file_path,
+            "file_size": self.file_size,
+            "error_message": self.error_message,
+            "execution_time_ms": self.execution_time_ms,
+        }

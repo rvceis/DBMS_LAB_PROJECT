@@ -11,6 +11,9 @@ import { Metadata } from '@/pages/Metadata';
 import { AssetTypes } from '@/pages/AssetTypes';
 import { Analytics } from '@/pages/Analytics';
 import { Users } from '@/pages/Users';
+import { ReportTemplates } from '@/pages/ReportTemplates';
+import { ReportBuilder } from '@/pages/ReportBuilder';
+import { ReportHistory } from '@/pages/ReportHistory';
 import { Box, Typography } from '@mui/material';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -82,14 +85,9 @@ export function App() {
                     <Route path="/analytics" element={<Analytics />} />
                     <Route path="/users" element={<Users />} />
                     <Route path="/metadata" element={<Metadata />} />
-                    <Route
-                      path="/analytics"
-                      element={
-                        <Box sx={{ p: 4 }}>
-                          <Typography>Analytics Page (Coming Soon)</Typography>
-                        </Box>
-                      }
-                    />
+                    <Route path="/reports/templates" element={<ReportTemplates />} />
+                    <Route path="/reports/builder" element={<ReportBuilder />} />
+                    <Route path="/reports/history" element={<ReportHistory />} />
                     <Route
                       path="/settings"
                       element={

@@ -168,8 +168,14 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         body: JSON.stringify(field),
       });
       if (!response.ok) throw new Error('Failed to add field');
-      await get().fetchSchemaById(schemaId);
+      // Refresh schemas and reselect current schema
       await get().fetchSchemas(get().assetTypeId);
+      const updated = await get().fetchSchemaById(schemaId);
+      if (updated) {
+        set({ selectedSchema: updated, loading: false });
+      } else {
+        set({ loading: false });
+      }
     } catch (error) {
       set({ error: (error as Error).message, loading: false });
     }
@@ -184,7 +190,14 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         body: JSON.stringify(updates),
       });
       if (!response.ok) throw new Error('Failed to update field');
+      // Refresh schemas and reselect current schema
       await get().fetchSchemas(get().assetTypeId);
+      const updated = await get().fetchSchemaById(schemaId);
+      if (updated) {
+        set({ selectedSchema: updated, loading: false });
+      } else {
+        set({ loading: false });
+      }
     } catch (error) {
       set({ error: (error as Error).message, loading: false });
     }
@@ -199,7 +212,14 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         headers: buildHeaders(),
       });
       if (!response.ok) throw new Error('Failed to delete field');
+      // Refresh schemas and reselect current schema
       await get().fetchSchemas(get().assetTypeId);
+      const updated = await get().fetchSchemaById(schemaId);
+      if (updated) {
+        set({ selectedSchema: updated, loading: false });
+      } else {
+        set({ loading: false });
+      }
     } catch (error) {
       set({ error: (error as Error).message, loading: false });
     }
