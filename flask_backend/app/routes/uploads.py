@@ -5,7 +5,7 @@ import os
 import tempfile
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from ..models import SchemaModel, SchemaField, MetadataRecord
+from ..models import SchemaModel, SchemaField, MetadataRecord, FieldValue
 from ..extensions import db
 from ..services.data_import_service import DataImportService
 from ..services.metadata_extractor import MetadataExtractor
@@ -550,6 +550,21 @@ def smart_upload():
             metadata_json=metadata
         )
         db.session.add(record)
+        db.session.flush()  # Flush to get record ID
+
+        # Create FieldValue entries for extracted metadata
+        schema_fields = {f.field_name: f for f in schema.fields if not f.is_deleted}
+        for field_name, field_value in metadata.items():
+            if field_name in schema_fields:
+                schema_field = schema_fields[field_name]
+                fv = FieldValue(record_id=record.id, schema_field_id=schema_field.id)
+                fv.schema_field = schema_field
+                try:
+                    fv.set_value(field_value)
+                except Exception as e:
+                    print(f"Error setting field {field_name}: {e}")
+                db.session.add(fv)
+
         db.session.commit()
 
         return jsonify({
