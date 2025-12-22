@@ -30,7 +30,7 @@ import {
   FormControlLabel,
   Switch,
 } from '@mui/material';
-import { Plus, Trash2, Eye, Edit2, Filter, X } from 'lucide-react';
+import { Plus, Trash2, Eye, Edit2, Filter, X, Upload } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useMetadataStore } from '@/stores/metadataStore';
 import { useSchemaStore, Schema, SchemaField } from '@/stores/schemaStore';
@@ -41,6 +41,7 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { useFieldValidation } from '@/hooks/useFieldValidation';
+import { DataImportDialog } from '@/components/common/DataImportDialog';
 
 export const Metadata = () => {
   const {
@@ -71,6 +72,7 @@ export const Metadata = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [jsonValuesText, setJsonValuesText] = useState<string>("{}");
+  const [importDialog, setImportDialog] = useState<{ open: boolean; schemaId?: number }>({ open: false });
 
   const { register, handleSubmit, reset, watch, setValue } = useForm({
     defaultValues: {
@@ -395,6 +397,15 @@ export const Metadata = () => {
           >
             Filters
           </Button>
+          {filters.schema_id && (
+            <Button
+              variant="outlined"
+              startIcon={<Upload size={20} />}
+              onClick={() => setImportDialog({ open: true, schemaId: filters.schema_id })}
+            >
+              Import Data
+            </Button>
+          )}
           <Button variant="contained" startIcon={<Plus size={20} />} onClick={handleOpenDialog}>
             New Record
           </Button>
@@ -751,6 +762,16 @@ export const Metadata = () => {
           <Button variant="contained" onClick={saveRecordEdit}>Save</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Data Import Dialog */}
+      {importDialog.schemaId && (
+        <DataImportDialog
+          open={importDialog.open}
+          onClose={() => setImportDialog({ open: false })}
+          schemaId={importDialog.schemaId}
+          onSuccess={() => fetchRecords()}
+        />
+      )}
     </Box>
   );
 };

@@ -53,6 +53,7 @@ def create_app():
     from .routes.schemas_dynamic import schemas_bp
     from .routes.metadata import metadata_bp
     from .routes.analytics import analytics_bp
+    from .routes.reports import reports_bp
     
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(users_bp, url_prefix="/users")
@@ -60,6 +61,7 @@ def create_app():
     app.register_blueprint(schemas_bp, url_prefix="/schemas")
     app.register_blueprint(metadata_bp, url_prefix="/metadata")
     app.register_blueprint(analytics_bp, url_prefix="/analytics")
+    app.register_blueprint(reports_bp, url_prefix="/reports")
 
     @app.route("/")
     def index():

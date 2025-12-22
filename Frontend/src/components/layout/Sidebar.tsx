@@ -19,6 +19,8 @@ import {
   Settings,
   Users,
   BarChart3,
+  FileBarChart,
+  Clock,
 } from 'lucide-react';
 
 interface NavItem {
@@ -32,6 +34,8 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={20} /> },
   { label: 'Schemas', path: '/schemas', icon: <Database size={20} /> },
   { label: 'Metadata', path: '/metadata', icon: <FileText size={20} /> },
+  { label: 'Reports', path: '/reports/templates', icon: <FileBarChart size={20} /> },
+  { label: 'Report History', path: '/reports/history', icon: <Clock size={20} /> },
   { label: 'Analytics', path: '/analytics', icon: <BarChart3 size={20} /> },
 ];
 
