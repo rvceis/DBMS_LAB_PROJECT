@@ -32,8 +32,9 @@ export const ReportHistory = () => {
     try {
       await downloadReport(id);
       toast.success('Download started');
-    } catch (error) {
-      toast.error('Failed to download report');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to download report');
+      console.error('Download error:', error);
     }
   };
 

@@ -255,16 +255,40 @@ export const useReportStore = create<ReportState>((set, get) => ({
   
   downloadReport: async (executionId: number) => {
     try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+      
       const response = await fetch(`${API_BASE}/executions/${executionId}/download`, {
-        headers: buildHeaders(),
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to download report');
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Unauthorized: Please log in again');
+        }
+        throw new Error(`Failed to download report: ${response.statusText}`);
+      }
       
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = response.headers.get('content-disposition')?.split('filename=')[1] || `report_${executionId}`;
+      
+      // Extract filename from content-disposition header
+      const contentDisposition = response.headers.get('content-disposition');
+      let filename = `report_${executionId}`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+?)"?$/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1];
+        }
+      }
+      
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
