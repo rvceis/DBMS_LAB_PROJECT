@@ -30,7 +30,7 @@ import {
   FormControlLabel,
   Switch,
 } from '@mui/material';
-import { Plus, Trash2, Eye, Edit2, Filter, X, Upload } from 'lucide-react';
+import { Plus, Trash2, Eye, Edit2, Filter, X, Upload, FileUp } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useMetadataStore } from '@/stores/metadataStore';
 import { useSchemaStore, Schema, SchemaField } from '@/stores/schemaStore';
@@ -42,6 +42,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { useFieldValidation } from '@/hooks/useFieldValidation';
 import { DataImportDialog } from '@/components/common/DataImportDialog';
+import { SmartFileUploadDialog } from '@/components/common/SmartFileUploadDialog';
 
 export const Metadata = () => {
   const {
@@ -73,6 +74,7 @@ export const Metadata = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [jsonValuesText, setJsonValuesText] = useState<string>("{}");
   const [importDialog, setImportDialog] = useState<{ open: boolean; schemaId?: number }>({ open: false });
+  const [smartUploadDialog, setSmartUploadDialog] = useState(false);
 
   const { register, handleSubmit, reset, watch, setValue } = useForm({
     defaultValues: {
@@ -396,6 +398,13 @@ export const Metadata = () => {
             onClick={() => setShowFilters(!showFilters)}
           >
             Filters
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<FileUp size={20} />}
+            onClick={() => setSmartUploadDialog(true)}
+          >
+            Upload File
           </Button>
           {filters.schema_id && (
             <Button
@@ -772,6 +781,16 @@ export const Metadata = () => {
           onSuccess={() => fetchRecords()}
         />
       )}
+
+      {/* Smart File Upload Dialog */}
+      <SmartFileUploadDialog
+        open={smartUploadDialog}
+        onClose={() => setSmartUploadDialog(false)}
+        onSuccess={() => {
+          fetchRecords();
+          fetchSchemas();
+        }}
+      />
     </Box>
   );
 };
