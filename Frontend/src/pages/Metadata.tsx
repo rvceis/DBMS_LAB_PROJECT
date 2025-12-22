@@ -454,7 +454,7 @@ export const Metadata = () => {
                   variant="outlined"
                   onClick={() => {
                     setSearchTerm('');
-                    setFilters({});
+                    setFilters({ asset_type_id: undefined, schema_id: undefined });
                     fetchRecords({});
                   }}
                 >
@@ -584,7 +584,7 @@ export const Metadata = () => {
               <TextField {...register('tag')} label="Tag (optional)" fullWidth />
 
               {/* Dynamic Fields */}
-              {selectedSchema && selectedSchema.fields && selectedSchema.fields.length > 0 && (
+              {selectedSchema && selectedSchema.fields && selectedSchema.fields.length > 0 && !watchCreateNewSchema && (
                 <Paper sx={{ p: 3, backgroundColor: 'action.hover' }}>
                   <Typography variant="h6" sx={{ mb: 2 }}>
                     Field Values
