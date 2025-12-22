@@ -69,4 +69,19 @@ def create_app():
     def index():
         return {"status": "ok", "service": "MMS Flask Backend"}
 
+    # Global error handlers
+    @app.errorhandler(404)
+    def not_found(error):
+        return jsonify({"error": "Resource not found"}), 404
+
+    @app.errorhandler(500)
+    def internal_error(error):
+        db.session.rollback()
+        return jsonify({"error": "Internal server error"}), 500
+
+    @app.errorhandler(Exception)
+    def handle_exception(error):
+        db.session.rollback()
+        return jsonify({"error": str(error)}), 500
+
     return app
