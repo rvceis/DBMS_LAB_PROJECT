@@ -75,6 +75,7 @@ export const Metadata = () => {
   const [jsonValuesText, setJsonValuesText] = useState<string>("{}");
   const [importDialog, setImportDialog] = useState<{ open: boolean; schemaId?: number }>({ open: false });
   const [smartUploadDialog, setSmartUploadDialog] = useState(false);
+  const [useJsonMode, setUseJsonMode] = useState(false);
 
   const { register, handleSubmit, reset, watch, setValue } = useForm({
     defaultValues: {
@@ -117,6 +118,8 @@ export const Metadata = () => {
     reset();
     setFieldValues({});
     setSelectedSchema(null);
+    setUseJsonMode(false);
+    setJsonValuesText("{}");
     setOpenDialog(true);
   };
 
@@ -125,6 +128,7 @@ export const Metadata = () => {
     reset();
     setFieldValues({});
     setSelectedSchema(null);
+    setUseJsonMode(false);
   };
 
   const handleFieldChange = (fieldName: string, value: any) => {
@@ -147,16 +151,51 @@ export const Metadata = () => {
       // Validate fields if using existing schema
       if (data.schemaId && selectedSchema) {
         const activeFields = selectedSchema.fields.filter((f: any) => !f.is_deleted);
-        const errors = validateAll(fieldValues, activeFields);
-        if (Object.keys(errors).length > 0) {
-          toast.error('Please fix validation errors');
-          return;
+        
+        // If using JSON mode, validate JSON first
+        if (useJsonMode) {
+          try {
+            const parsed = JSON.parse(jsonValuesText || '{}');
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+              toast.error('Values must be a JSON object');
+              return;
+            }
+            const errors = validateAll(parsed, activeFields);
+            if (Object.keys(errors).length > 0) {
+              toast.error('Please fix validation errors in JSON');
+              return;
+            }
+          } catch (e) {
+            toast.error('Invalid JSON format');
+            return;
+          }
+        } else {
+          const errors = validateAll(fieldValues, activeFields);
+          if (Object.keys(errors).length > 0) {
+            toast.error('Please fix validation errors');
+            return;
+          }
         }
       }
       
-      let valuesToSend = { ...fieldValues };
+      let valuesToSend = useJsonMode ? {} : { ...fieldValues };
+      
+      // If using JSON mode with existing schema
+      if (useJsonMode && data.schemaId && selectedSchema) {
+        try {
+          const parsed = JSON.parse(jsonValuesText || '{}');
+          if (Object.keys(parsed).length === 0) {
+            toast.error('Provide at least one field in values');
+            return;
+          }
+          valuesToSend = parsed;
+        } catch (e) {
+          toast.error('Invalid JSON in Values');
+          return;
+        }
+      }
       // If auto-creating schema without selecting one, require JSON values input
-      if (!data.schemaId && data.createNewSchema) {
+      else if (!data.schemaId && data.createNewSchema) {
         try {
           const parsed = JSON.parse(jsonValuesText || '{}');
           if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -174,11 +213,8 @@ export const Metadata = () => {
           return;
         }
       }
+      
       await createRecord({
-        // Before submitting, transform json/array/object fields if using existing schema
-        // so backend receives correct types
-        // Note: auto-create path uses JSON object input already
-        
         name: data.name,
         schema_id: data.schemaId ? parseInt(data.schemaId) : undefined,
         asset_type_id: parseInt(data.assetTypeId),
@@ -594,20 +630,52 @@ export const Metadata = () => {
 
               {/* Dynamic Fields */}
               {selectedSchema && selectedSchema.fields && selectedSchema.fields.length > 0 && !watchCreateNewSchema && (
-                <Paper sx={{ p: 3, backgroundColor: 'action.hover' }}>
-                  <Typography variant="h6" sx={{ mb: 2 }}>
-                    Field Values
-                  </Typography>
-                  <Grid container spacing={2}>
-                    {selectedSchema.fields
-                      .filter((f) => !f.is_deleted)
-                      .map((field) => (
-                        <Grid item xs={12} sm={6} key={field.id}>
-                          {renderFieldInput(field)}
-                        </Grid>
-                      ))}
-                  </Grid>
-                </Paper>
+                <Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6">Field Values</Typography>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={useJsonMode}
+                          onChange={(e) => setUseJsonMode(e.target.checked)}
+                          size="small"
+                        />
+                      }
+                      label={useJsonMode ? 'JSON Mode' : 'Form Mode'}
+                    />
+                  </Box>
+                  <Paper sx={{ p: 3, backgroundColor: 'action.hover' }}>
+                    {!useJsonMode ? (
+                      <Grid container spacing={2}>
+                        {selectedSchema.fields
+                          .filter((f) => !f.is_deleted)
+                          .map((field) => (
+                            <Grid item xs={12} sm={6} key={field.id}>
+                              {renderFieldInput(field)}
+                            </Grid>
+                          ))}
+                      </Grid>
+                    ) : (
+                      <Stack spacing={2}>
+                        <Typography variant="body2" color="text.secondary">
+                          Enter field values as a JSON object. Example: {`{"title":"My Record","pages":10,"tags":["important"]}`}
+                        </Typography>
+                        <TextField
+                          label="Values (JSON object)"
+                          value={jsonValuesText}
+                          onChange={(e) => setJsonValuesText(e.target.value)}
+                          minRows={6}
+                          maxRows={12}
+                          fullWidth
+                          multiline
+                          placeholder='{"field1": "value1", "field2": "value2"}'
+                          error={!!validationErrors.jsonValues}
+                          helperText={validationErrors.jsonValues}
+                        />
+                      </Stack>
+                    )}
+                  </Paper>
+                </Box>
               )}
 
               {watchCreateNewSchema && !watchSchemaId && (

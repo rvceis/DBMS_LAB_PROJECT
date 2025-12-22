@@ -194,6 +194,146 @@ def generate_adhoc_report():
         return jsonify({'error': str(e)}), 500
 
 
+@reports_bp.route('/generate/records', methods=['POST'])
+@jwt_required()
+def generate_records_report():
+    """Generate a report from selected records - creates separate tables per schema"""
+    user_id = int(get_jwt_identity())
+    data = request.get_json()
+    
+    record_ids = data.get('record_ids', [])
+    format_type = data.get('format', 'csv')
+    report_name = data.get('name', 'Records Report')
+    
+    if not record_ids or not isinstance(record_ids, list) or len(record_ids) == 0:
+        return jsonify({'error': 'record_ids must be a non-empty array'}), 400
+    
+    if format_type not in ['csv', 'pdf']:
+        return jsonify({'error': 'format must be csv or pdf'}), 400
+    
+    try:
+        from .metadata import MetadataRecord
+        from ..services.report_export_service import ReportExportService
+        import os, time
+        from datetime import datetime
+        
+        # Fetch all records
+        records = MetadataRecord.query.filter(MetadataRecord.id.in_(record_ids)).all()
+        if not records:
+            return jsonify({'error': 'No records found'}), 404
+        
+        # Group records by schema
+        records_by_schema = {}
+        for record in records:
+            schema_id = record.schema_id
+            if schema_id not in records_by_schema:
+                records_by_schema[schema_id] = []
+            records_by_schema[schema_id].append(record)
+        
+        # Create execution record
+        execution = ReportExecution(
+            template_id=None,
+            user_id=user_id,
+            trigger_type='manual',
+            format=format_type,
+            status='running',
+            query_params={'record_ids': record_ids}
+        )
+        db.session.add(execution)
+        db.session.commit()
+        
+        try:
+            start_time = time.time()
+            
+            # Generate report with data grouped by schema
+            timestamp = int(time.time())
+            filename = f"records_{execution.id}_{timestamp}.{format_type}"
+            
+            reports_dir = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
+                'instance', 'reports'
+            )
+            exporter = ReportExportService(reports_dir)
+            
+            if format_type == 'csv':
+                # For CSV, combine all records
+                all_data = []
+                all_fields = set()
+                for schema_id, schema_records in records_by_schema.items():
+                    for record in schema_records:
+                        row = {
+                            'id': record.id,
+                            'name': record.name,
+                            'schema_id': record.schema_id,
+                            'created_at': record.created_at.isoformat() if record.created_at else None,
+                        }
+                        for fv in record.field_values:
+                            field_name = fv.schema_field.field_name
+                            row[field_name] = fv.get_value()
+                            all_fields.add(field_name)
+                        all_data.append(row)
+                
+                # Sort fields consistently
+                fields = sorted(list(all_fields))
+                filepath = exporter.export_csv(all_data, ['id', 'name', 'schema_id', 'created_at'] + fields, filename)
+            
+            else:  # PDF
+                # For PDF, create separate tables per schema
+                pdf_config = {
+                    'title': report_name,
+                    'orientation': 'landscape',
+                    'page_size': 'A4',
+                    'show_metadata': True,
+                }
+                
+                # Build data structure: list of {schema_name, fields, rows}
+                pdf_data = []
+                for schema_id, schema_records in records_by_schema.items():
+                    schema = schema_records[0].schema
+                    schema_data = []
+                    schema_fields = set()
+                    
+                    for record in schema_records:
+                        row = {
+                            'id': record.id,
+                            'name': record.name,
+                            'created_at': record.created_at.isoformat() if record.created_at else None,
+                        }
+                        for fv in record.field_values:
+                            field_name = fv.schema_field.field_name
+                            row[field_name] = fv.get_value()
+                            schema_fields.add(field_name)
+                        schema_data.append(row)
+                    
+                    pdf_data.append({
+                        'schema_name': schema.name,
+                        'fields': sorted(list(schema_fields)),
+                        'data': schema_data
+                    })
+                
+                filepath = exporter.export_pdf_multi_schema(pdf_data, pdf_config, filename)
+            
+            # Update execution
+            execution.completed_at = datetime.utcnow()
+            execution.status = 'completed'
+            execution.row_count = len(records)
+            execution.file_path = filepath
+            execution.file_size = os.path.getsize(filepath) if os.path.exists(filepath) else 0
+            execution.execution_time_ms = int((time.time() - start_time) * 1000)
+            
+        except Exception as e:
+            execution.status = 'failed'
+            execution.error_message = str(e)
+            execution.completed_at = datetime.utcnow()
+            raise
+        finally:
+            db.session.commit()
+        
+        return jsonify(execution.to_dict()), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @reports_bp.route('/executions', methods=['GET'])
 @jwt_required()
 def list_executions():

@@ -14,6 +14,7 @@ import { Users } from '@/pages/Users';
 import { ReportTemplates } from '@/pages/ReportTemplates';
 import { ReportBuilder } from '@/pages/ReportBuilder';
 import { ReportHistory } from '@/pages/ReportHistory';
+import { RecordReport } from '@/pages/RecordReport';
 import { Box, Typography } from '@mui/material';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -88,6 +89,7 @@ export function App() {
                     <Route path="/reports/templates" element={<ReportTemplates />} />
                     <Route path="/reports/builder" element={<ReportBuilder />} />
                     <Route path="/reports/history" element={<ReportHistory />} />
+                    <Route path="/reports/from-records" element={<RecordReport />} />
                     <Route
                       path="/settings"
                       element={
