@@ -72,10 +72,18 @@ class ReportGenerator:
             timestamp = int(time.time())
             filename = f"report_{template.id}_{execution.id}_{timestamp}.{format}"
             
-            # Get fields
+            # Get fields: always use all fields if not explicitly set, to ensure vertical layout triggers
             fields = query_config.get('fields', [])
             if not fields and data:
                 fields = list(data[0].keys())
+            # If fields is set but incomplete, and data has more keys, use all keys
+            if data and len(fields) < len(data[0].keys()):
+                all_keys = list(data[0].keys())
+                if set(fields) != set(all_keys):
+                    fields = all_keys
+            # Debug print
+            import sys
+            print(f"[PDF EXPORT] Fields used: {fields} (count: {len(fields)})", file=sys.stderr)
             
             # Export based on format
             if format == 'csv':

@@ -1,5 +1,14 @@
 # Data Flow Diagrams (DFD) - Metadata Management System
 
+## DFD Notation Key
+
+- **Process**: Rectangle with rounded corners (P#)
+- **Data Store**: Open-ended rectangle (D#)
+- **External Entity**: Square (User, File, etc.)
+- **Data Flow**: Arrow (→)
+
+---
+
 ## Overview
 This document provides comprehensive Data Flow Diagrams for the Metadata Management System, starting from the Context Diagram (Level 0) through the detailed process breakdown (Level 1).
 
@@ -58,43 +67,172 @@ The Metadata Management System is a centralized platform for managing metadata r
 ## Level 1: First Level Decomposition
 
 ### Major Processes
+---
+
+## Level 2: DFD (Process Decomposition, with Data Stores)
+
+### P3: Metadata Record Management (Level 2)
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    METADATA MANAGEMENT SYSTEM (Level 1)                 │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│   ┌──────────────────┐      ┌──────────────────┐                      │
-│   │   P1: User       │      │  P2: Schema      │                      │
-│   │   Authentication │◄────►│  Management      │                      │
-│   │   & Authorization│      │                  │                      │
-│   └──────────────────┘      └──────────────────┘                      │
-│            │                         │                                 │
-│            │                         │                                 │
-│            ▼                         ▼                                 │
-│   ┌──────────────────┐      ┌──────────────────┐                      │
-│   │  P3: Metadata    │◄────►│  P4: File        │                      │
-│   │  Record          │      │  Processing &    │                      │
-│   │  Management      │      │  Upload          │                      │
-│   └──────────────────┘      └──────────────────┘                      │
-│            │                         │                                 │
-│            │                         │                                 │
-│            ▼                         ▼                                 │
-│   ┌──────────────────┐      ┌──────────────────┐                      │
-│   │  P5: Report      │      │  P6: Analytics   │                      │
-│   │  Generation      │      │  & Insights      │                      │
-│   └──────────────────┘      └──────────────────┘                      │
-│            │                         │                                 │
-│            └─────────────┬───────────┘                                 │
-│                          │                                             │
-└──────────────────────────┼─────────────────────────────────────────────┘
-                           │
-                           ▼
-                    ┌──────────────┐
-                    │  PostgreSQL  │
-                    │   Database   │
-                    └──────────────┘
+          +---------+
+          |  User   |
+          +----+----+
+               |
+               v
+      +---------------------+
+      | P3.1: Create Record |
+      +----+----------------+
+           |
+           v
+      +---------------------+
+      | D6: Metadata Records|<<== Data Store
+      +----+----------------+
+           |
+           v
+      +---------------------+
+      | D7: Field Values    |<<== Data Store
+      +---------------------+
 ```
+
+**Edges:**
+- User → P3.1: Record data (name, schema_id, values)
+- P3.1 → D6: Insert metadata record
+- P3.1 → D7: Insert field values
+- D6/D7 → User: Confirmation/Errors
+
+---
+
+### P4: File Processing & Upload (Level 2)
+
+```
+          +---------+
+          |  User   |
+          +----+----+
+               |
+               v
+      +---------------------+
+      | P4.1: File Upload   |
+      +----+----------------+
+           |
+           v
+      +---------------------+
+      | P4.2: Metadata      |
+      | Extraction          |
+      +----+----------------+
+           |
+           v
+      +---------------------+
+      | D8: File Storage    |<<== Data Store
+      +----+----------------+
+           |
+           v
+      +---------------------+
+      | D6: Metadata Records|<<== Data Store
+      +---------------------+
+```
+
+**Edges:**
+- User → P4.1: File
+- P4.1 → P4.2: File for extraction
+- P4.2 → D8: Store file
+- P4.2 → D6: Create metadata record
+- D6 → User: Confirmation
+
+---
+
+### P5: Report Generation (Level 2)
+
+```
+          +---------+
+          |  User   |
+          +----+----+
+               |
+               v
+      +---------------------+
+      | P5.1: Query Builder |
+      +----+----------------+
+           |
+           v
+      +---------------------+
+      | D6: Metadata Records|<<== Data Store
+      +----+----------------+
+           |
+           v
+      +---------------------+
+      | D7: Field Values    |<<== Data Store
+      +----+----------------+
+           |
+           v
+      +---------------------+
+      | P5.3: CSV Export    |
+      | P5.4: PDF Export    |
+      +----+----------------+
+           |
+           v
+      +---------------------+
+      | D11: Report Files   |<<== Data Store
+      +----+----------------+
+           |
+           v
+      +---------+
+      |  User   |
+      +---------+
+```
+
+**Edges:**
+- User → P5.1: Report request (filters, schema, format)
+- P5.1 → D6/D7: Query records/fields
+- P5.3/P5.4 → D11: Save report file
+- D11 → User: Download link
+
+---
+
+## Level 3: DFD (Detailed Subprocess, with Data Stores)
+
+### P3.1: Create Metadata Record (Level 3)
+
+```
+User
+  |
+  v
++---------------------+
+| Validate Input      |
++---------+-----------+
+          |
+          v
++---------------------+
+| D2: Schemas Table  |<<== Data Store
++---------+-----------+
+          |
+          v
++---------------------+
+| Validate Field      |
+| Values              |
++---------+-----------+
+          |
+          v
++---------------------+
+| D6: Metadata Records|<<== Data Store
++---------+-----------+
+          |
+          v
++---------------------+
+| D7: Field Values    |<<== Data Store
++---------+-----------+
+          |
+          v
++---------------------+
+| Return Confirmation |
++---------------------+
+```
+
+**Edges:**
+- User → Validate Input: Record data
+- Validate Input → D2: Check schema exists
+- D2 → Validate Field Values: schema fields
+- Validate Field Values → D6: Insert record
+- D6 → D7: Insert field values
+- D7 → Return Confirmation: success
 
 ---
 
