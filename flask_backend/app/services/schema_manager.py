@@ -255,7 +255,7 @@ class SchemaManager:
             schema_id: Schema to modify
             field_name: Field to remove
             user_id: User making the change
-            permanent: If True, hard delete (loses data). If False, soft delete
+            permanent: If True, hard delete (removes all data). If False, soft delete (keeps data, hides field)
         
         Returns:
             True if successful
@@ -281,12 +281,12 @@ class SchemaManager:
             
             try:
                 if permanent:
-                    # Hard delete - removes all data
+                    # Hard delete - removes all data and field definition
                     FieldValue.query.filter_by(schema_field_id=field.id).delete()
                     db.session.delete(field)
                     action = "permanently deleted"
                 else:
-                    # Soft delete - mark as deleted
+                    # Soft delete - mark as deleted, keep data for rollback/audit
                     field.is_deleted = True
                     action = "soft deleted"
                 

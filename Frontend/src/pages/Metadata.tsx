@@ -76,6 +76,9 @@ export const Metadata = () => {
   const [importDialog, setImportDialog] = useState<{ open: boolean; schemaId?: number }>({ open: false });
   const [smartUploadDialog, setSmartUploadDialog] = useState(false);
   const [useJsonMode, setUseJsonMode] = useState(false);
+  const [inputFormat, setInputFormat] = useState<'json'|'ndjson'|'csv'|'tsv'|'raw'>('json');
+  const [inputMode, setInputMode] = useState<'file' | 'text'>('text');
+  const [file, setFile] = useState<File | null>(null);
 
   const { register, handleSubmit, reset, watch, setValue } = useForm({
     defaultValues: {
@@ -120,6 +123,8 @@ export const Metadata = () => {
     setSelectedSchema(null);
     setUseJsonMode(false);
     setJsonValuesText("{}");
+    setInputMode('text');
+    setFile(null);
     setOpenDialog(true);
   };
 
@@ -129,6 +134,8 @@ export const Metadata = () => {
     setFieldValues({});
     setSelectedSchema(null);
     setUseJsonMode(false);
+    setInputMode('text');
+    setFile(null);
   };
 
   const handleFieldChange = (fieldName: string, value: any) => {
@@ -139,63 +146,54 @@ export const Metadata = () => {
 
   const onSubmit = async (data: any) => {
     try {
-      if (!data.assetTypeId) {
-        toast.error('Please select an asset type');
-        return;
-      }
+     
       if (!data.schemaId && !data.createNewSchema) {
         toast.error('Select a schema or enable auto-create');
         return;
       }
       
-      // Validate fields if using existing schema
-      if (data.schemaId && selectedSchema) {
+      // Validate fields if using existing schema and not in flexible/raw mode
+      if (data.schemaId && selectedSchema && inputMode !== 'text') {
         const activeFields = selectedSchema.fields.filter((f: any) => !f.is_deleted);
-        
-        // If using JSON mode, validate JSON first
-        if (useJsonMode) {
-          try {
-            const parsed = JSON.parse(jsonValuesText || '{}');
-            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-              toast.error('Values must be a JSON object');
-              return;
-            }
-            const errors = validateAll(parsed, activeFields);
-            if (Object.keys(errors).length > 0) {
-              toast.error('Please fix validation errors in JSON');
-              return;
-            }
-          } catch (e) {
-            toast.error('Invalid JSON format');
-            return;
-          }
-        } else {
-          const errors = validateAll(fieldValues, activeFields);
-          if (Object.keys(errors).length > 0) {
-            toast.error('Please fix validation errors');
-            return;
-          }
+        const errors = validateAll(fieldValues, activeFields);
+        if (Object.keys(errors).length > 0) {
+          toast.error('Please fix validation errors');
+          return;
         }
       }
       
       let valuesToSend = useJsonMode ? {} : { ...fieldValues };
-      
-      // If using JSON mode with existing schema
-      if (useJsonMode && data.schemaId && selectedSchema) {
-        try {
-          const parsed = JSON.parse(jsonValuesText || '{}');
-          if (Object.keys(parsed).length === 0) {
-            toast.error('Provide at least one field in values');
+      let rawPayloadText: string | undefined = undefined;
+      let rawFormat: string | undefined = undefined;
+
+      // If using JSON/raw mode with existing schema
+      if (useJsonMode) {
+        if (inputFormat === 'json') {
+          try {
+            const parsed = JSON.parse(jsonValuesText || '{}');
+            if (Object.keys(parsed).length === 0) {
+              toast.error('Provide at least one field in values');
+              return;
+            }
+            valuesToSend = parsed;
+          } catch (e) {
+            toast.error('Invalid JSON in Values');
             return;
           }
-          valuesToSend = parsed;
-        } catch (e) {
-          toast.error('Invalid JSON in Values');
-          return;
+        } else {
+          // Non-JSON raw input (CSV/NDJSON/TSV/raw text) - send as raw_data to backend
+          if (!jsonValuesText || !jsonValuesText.trim()) {
+            toast.error('Provide raw input data');
+            return;
+          }
+          rawPayloadText = jsonValuesText;
+          rawFormat = inputFormat;
         }
       }
-      // If auto-creating schema without selecting one, require JSON values input
-      else if (!data.schemaId && data.createNewSchema) {
+
+      // If auto-creating schema, do not require JSON; allow any raw data
+      // Only parse as JSON if useJsonMode and inputFormat is 'json'
+      if (!data.schemaId && data.createNewSchema && useJsonMode && inputFormat === 'json') {
         try {
           const parsed = JSON.parse(jsonValuesText || '{}');
           if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -214,11 +212,22 @@ export const Metadata = () => {
         }
       }
       
-      await createRecord({
+      const payload: any = {
         name: data.name,
         schema_id: data.schemaId ? parseInt(data.schemaId) : undefined,
-        asset_type_id: parseInt(data.assetTypeId),
-        values: (() => {
+        create_new_schema: data.createNewSchema,
+        tag: data.tag || undefined,
+      };
+      if (data.assetTypeId) {
+        payload.asset_type_id = parseInt(data.assetTypeId);
+      }
+
+      if (rawPayloadText && rawFormat) {
+        payload.raw_data = rawPayloadText;
+        payload.format = rawFormat;
+      } else {
+        // prepare values mapping for schema-aware fields
+        payload.values = (() => {
           if (data.schemaId && selectedSchema) {
             const activeFields = selectedSchema.fields.filter((f: any) => !f.is_deleted);
             const transformed = { ...valuesToSend } as Record<string, any>;
@@ -244,12 +253,40 @@ export const Metadata = () => {
             return transformed;
           }
           return valuesToSend;
-        })(),
-        create_new_schema: data.createNewSchema,
-        tag: data.tag || undefined,
-      });
+        })();
+      }
+
+      // Flexible submit: if a file is selected, send FormData; otherwise send JSON payload with raw_data if provided
+      if (inputMode === 'file' && file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('name', data.name);
+        if (data.assetTypeId) formData.append('asset_type_id', data.assetTypeId);
+        if (data.schemaId) formData.append('schema_id', data.schemaId);
+        if (data.tag) formData.append('tag', data.tag);
+        if (data.createNewSchema) formData.append('create_new_schema', 'true');
+        if (rawPayloadText && rawFormat) {
+          formData.append('raw_data', rawPayloadText);
+          formData.append('format', rawFormat);
+        }
+        await createRecord(formData);
+      } else {
+        if (!rawPayloadText && inputMode === 'text' && (!jsonValuesText || !jsonValuesText.trim()) && !payload.values) {
+          toast.error('Please provide some data (file or raw text)');
+          return;
+        }
+        if (rawPayloadText && rawFormat) {
+          payload.raw_data = rawPayloadText;
+          payload.format = rawFormat;
+        } else if (inputMode === 'text') {
+          payload.raw_data = jsonValuesText;
+          payload.format = 'raw';
+        }
+        await createRecord(payload);
+      }
       toast.success('Metadata record created!');
       handleCloseDialog();
+      await fetchSchemas(); // Always refetch schemas to get updated fields
       fetchRecords();
     } catch (error) {
       toast.error('Failed to create record');
@@ -586,14 +623,14 @@ export const Metadata = () => {
               <TextField {...register('name', { required: true })} label="Record Name" fullWidth required />
 
               <FormControl fullWidth>
-                <InputLabel>Asset Type *</InputLabel>
+                <InputLabel>Asset Type (optional)</InputLabel>
                 <Select
-                  {...register('assetTypeId', { required: true })}
-                  label="Asset Type *"
+                  {...register('assetTypeId')}
+                  label="Asset Type (optional)"
                   defaultValue=""
                 >
                   <MenuItem value="">
-                    <em>Select...</em>
+                    <em>None</em>
                   </MenuItem>
                   {assetTypes.map((at) => (
                     <MenuItem key={at.id} value={String(at.id)}>
@@ -603,21 +640,17 @@ export const Metadata = () => {
                 </Select>
               </FormControl>
 
-              {watchAssetTypeId && (
-                <FormControl fullWidth>
-                  <InputLabel>Schema</InputLabel>
-                  <Select {...register('schemaId')} label="Schema" defaultValue="">
-                    <MenuItem value=""><em>None (auto-create)</em></MenuItem>
-                    {schemas
-                      .filter((s) => s.asset_type_id === parseInt(watchAssetTypeId))
-                      .map((schema) => (
-                        <MenuItem key={schema.id} value={String(schema.id)}>
-                          {schema.name} (v{schema.version})
-                        </MenuItem>
-                      ))}
-                  </Select>
-                </FormControl>
-              )}
+              <FormControl fullWidth>
+                <InputLabel>Schema</InputLabel>
+                <Select {...register('schemaId')} label="Schema" defaultValue="">
+                  <MenuItem value=""><em>None (auto-create)</em></MenuItem>
+                  {schemas.map((schema) => (
+                    <MenuItem key={schema.id} value={String(schema.id)}>
+                      {schema.name} (v{schema.version})
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
 
               {!watchSchemaId && (
                 <FormControlLabel
@@ -627,6 +660,24 @@ export const Metadata = () => {
               )}
 
               <TextField {...register('tag')} label="Tag (optional)" fullWidth />
+
+              {/* Toggle for file vs text input */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <FormControlLabel
+                  control={<Switch checked={inputMode === 'file'} onChange={e => setInputMode(e.target.checked ? 'file' : 'text')} />}
+                  label={inputMode === 'file' ? 'File Upload' : 'Raw/Text Input'}
+                />
+              </Box>
+
+              {inputMode === 'file' ? (
+                <Box>
+                  <Button variant="outlined" component="label">
+                    Select File
+                    <input type="file" hidden onChange={e => setFile(e.target.files?.[0] || null)} />
+                  </Button>
+                  {file && <Typography variant="body2" sx={{ mt: 1 }}>{file.name}</Typography>}
+                </Box>
+              ) : null}
 
               {/* Dynamic Fields */}
               {selectedSchema && selectedSchema.fields && selectedSchema.fields.length > 0 && !watchCreateNewSchema && (
@@ -660,15 +711,29 @@ export const Metadata = () => {
                         <Typography variant="body2" color="text.secondary">
                           Enter field values as a JSON object. Example: {`{"title":"My Record","pages":10,"tags":["important"]}`}
                         </Typography>
+                        <FormControl size="small" sx={{ width: 200 }}>
+                          <InputLabel>Format</InputLabel>
+                          <Select
+                            value={inputFormat}
+                            label="Format"
+                            onChange={(e) => setInputFormat(e.target.value as any)}
+                          >
+                            <MenuItem value="json">JSON</MenuItem>
+                            <MenuItem value="ndjson">NDJSON</MenuItem>
+                            <MenuItem value="csv">CSV</MenuItem>
+                            <MenuItem value="tsv">TSV</MenuItem>
+                            <MenuItem value="raw">Raw Text</MenuItem>
+                          </Select>
+                        </FormControl>
                         <TextField
-                          label="Values (JSON object)"
+                          label={inputFormat === 'json' ? 'Values (JSON object)' : 'Raw Input'}
                           value={jsonValuesText}
                           onChange={(e) => setJsonValuesText(e.target.value)}
                           minRows={6}
                           maxRows={12}
                           fullWidth
                           multiline
-                          placeholder='{"field1": "value1", "field2": "value2"}'
+                          placeholder={inputFormat === 'json' ? '{"field1": "value1"}' : 'Paste raw data here (NDJSON/CSV/TSV or free text)'}
                           error={!!validationErrors.jsonValues}
                           helperText={validationErrors.jsonValues}
                         />
@@ -678,21 +743,21 @@ export const Metadata = () => {
                 </Box>
               )}
 
-              {watchCreateNewSchema && !watchSchemaId && (
+              {inputMode === 'text' && (!watchSchemaId) && (
                 <Paper sx={{ p: 3, backgroundColor: 'action.hover' }}>
                   <Stack spacing={2}>
                     <Typography variant="body2" color="text.secondary">
-                      No schema selected. We will auto-create a schema from the provided field values.
-                      Enter a JSON object of key-value pairs below (e.g. {`{"title":"My file","pages":10}`} ).
+                      Enter any raw data here (JSON, CSV, plain text, etc.). If you want schema auto-creation, enable the checkbox above. Any format is accepted.
                     </Typography>
                     <TextField
-                      label="Values (JSON object)"
+                      label="Raw Data (any format)"
                       value={jsonValuesText}
                       onChange={(e) => setJsonValuesText(e.target.value)}
-                      minRows={4}
+                      minRows={6}
                       maxRows={12}
                       fullWidth
                       multiline
+                      placeholder="Paste raw data here"
                     />
                   </Stack>
                 </Paper>
@@ -793,15 +858,13 @@ export const Metadata = () => {
         </Box>
       </Drawer>
 
-      {/* Delete Confirmation */}
+      {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         open={openDeleteDialog}
+        title="Delete Record"
+        description="Are you sure you want to delete this record? This action cannot be undone."
         onClose={() => setOpenDeleteDialog(false)}
         onConfirm={handleDelete}
-        title="Delete Record"
-        message="Are you sure you want to delete this metadata record? This action cannot be undone."
-        confirmText="Delete"
-        danger
       />
 
       {/* Edit Record Dialog */}

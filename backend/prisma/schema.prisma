@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  
+}
+
+model users {
+  user_id    BigInt   @id @default(autoincrement())
+  name       String
+  email      String   @unique
+  role       String   @default("viewer")
+  created_at DateTime @default(now())
+
+  schemas  schemas[]  @relation("schema_creator")
+}
+
+model asset_types {
+  asset_id BigInt  @id @default(autoincrement())
+  name     String  @unique
+
+  metadata_records metadata_records[]
+}
+
+model schemas {
+  schema_id   BigInt   @id @default(autoincrement())
+  version     Int
+  schema_json Json
+  created_by  BigInt?
+  created_at  DateTime @default(now())
+
+  creator users? @relation("schema_creator", fields: [created_by], references: [user_id])
+
+  metadata_records metadata_records[]
+  change_log       change_log[]
+}
+
+model metadata_records {
+  record_id     BigInt   @id @default(autoincrement())
+  schema_id     BigInt?
+  asset_type_id BigInt?
+  metadata_json Json
+  tag           String?
+  created_at    DateTime @default(now())
+
+  schemas     schemas?     @relation(fields: [schema_id], references: [schema_id])
+  asset_types asset_types? @relation(fields: [asset_type_id], references: [asset_id])
+}
+
+model change_log {
+  log_id     BigInt   @id @default(autoincrement())
+  schema_id  BigInt?
+  change_desc String
+  changed_at  DateTime @default(now())
+
+  schemas schemas? @relation(fields: [schema_id], references: [schema_id])
+}

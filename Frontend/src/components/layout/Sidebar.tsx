@@ -1,3 +1,4 @@
+import React from 'react';
 import {
   Drawer,
   List,
@@ -8,7 +9,10 @@ import {
   Box,
   Divider,
   useMediaQuery,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -45,11 +49,13 @@ const adminItems: NavItem[] = [
   { label: 'Users', path: '/users', icon: <Users size={20} />, requiredRole: 'admin' },
 ];
 
+
 export const Sidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { sidebarOpen, toggleSidebar } = useUIStore();
+  const [collapsed, setCollapsed] = React.useState(false);
   const isMobile = useMediaQuery((theme: any) => theme.breakpoints.down('sm'));
 
   const canAccess = (item: NavItem) => {
@@ -66,22 +72,31 @@ export const Sidebar = () => {
 
   const drawerContent = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ p: 2, fontWeight: 700, fontSize: '1.25rem', color: 'primary.main' }}>MetaDB</Box>
+      <Box sx={{ p: 2, fontWeight: 700, fontSize: '1.25rem', color: 'primary.main', display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'space-between' }}>
+        {!collapsed && 'MetaDB'}
+        <Tooltip title={collapsed ? 'Expand' : 'Collapse'}>
+          <IconButton size="small" onClick={() => setCollapsed((c) => !c)} sx={{ ml: collapsed ? 0 : 1 }}>
+            {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+          </IconButton>
+        </Tooltip>
+      </Box>
       <Divider />
 
       <List sx={{ flex: 1 }}>
         {filteredItems.map((item) => (
-          <ListItem key={item.path} disablePadding>
+          <ListItem key={item.path} disablePadding sx={{ justifyContent: collapsed ? 'center' : 'flex-start' }}>
             <ListItemButton
               selected={location.pathname === item.path}
               onClick={() => handleNavigation(item.path)}
               sx={{
                 color: location.pathname === item.path ? 'primary.main' : 'inherit',
                 backgroundColor: location.pathname === item.path ? 'action.selected' : 'transparent',
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                px: collapsed ? 1.5 : 2,
               }}
             >
-              <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>{item.icon}</ListItemIcon>
-              <ListItemText primary={item.label} />
+              <ListItemIcon sx={{ color: 'inherit', minWidth: 40, justifyContent: 'center' }}>{item.icon}</ListItemIcon>
+              {!collapsed && <ListItemText primary={item.label} />}
             </ListItemButton>
           </ListItem>
         ))}
@@ -89,12 +104,12 @@ export const Sidebar = () => {
 
       <Divider />
       <List>
-        <ListItem disablePadding>
-          <ListItemButton onClick={() => handleNavigation('/settings')}>
-            <ListItemIcon sx={{ minWidth: 40 }}>
+        <ListItem disablePadding sx={{ justifyContent: collapsed ? 'center' : 'flex-start' }}>
+          <ListItemButton onClick={() => handleNavigation('/settings')} sx={{ justifyContent: collapsed ? 'center' : 'flex-start', px: collapsed ? 1.5 : 2 }}>
+            <ListItemIcon sx={{ minWidth: 40, justifyContent: 'center' }}>
               <Settings size={20} />
             </ListItemIcon>
-            <ListItemText primary="Settings" />
+            {!collapsed && <ListItemText primary="Settings" />}
           </ListItemButton>
         </ListItem>
       </List>
@@ -102,26 +117,28 @@ export const Sidebar = () => {
   );
 
   return (
-    <>
       <Drawer
         variant={isMobile ? 'temporary' : 'permanent'}
         open={isMobile ? sidebarOpen : true}
         onClose={() => toggleSidebar()}
         sx={{
-          width: 280,
+          width: collapsed ? 72 : 280,
           flexShrink: 0,
           '& .MuiDrawer-paper': {
-            width: 280,
+            width: collapsed ? 72 : 280,
             marginTop: '64px',
             height: 'calc(100vh - 64px)',
             backgroundColor: 'background.paper',
             borderRight: '1px solid',
             borderColor: 'divider',
+            overflowX: 'hidden',
+            transition: 'width 0.2s',
           },
         }}
       >
         {drawerContent}
       </Drawer>
-    </>
+    
+    
   );
 };

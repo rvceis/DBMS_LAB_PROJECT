@@ -118,6 +118,7 @@ class MetadataRecord(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     tag = db.Column(db.String(128), nullable=True)
     metadata_json = db.Column(db.JSON, nullable=True)  # Kept for backward compatibility
+    raw_data = db.Column(db.JSON, nullable=True)  # Store all incoming data, not just metadata
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

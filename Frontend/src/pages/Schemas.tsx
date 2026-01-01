@@ -35,6 +35,7 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { ConstraintBuilder } from '@/components/common/ConstraintBuilder';
 import { ExtractMetadataDialog } from '@/components/common/ExtractMetadataDialog';
+import { SchemaChangeLog } from '@/components/SchemaChangeLog';
 
 export const Schemas = () => {
   const { schemas, fetchSchemas, createSchema, updateSchema, selectedSchema, selectSchema, addField, updateField, deleteField } =
@@ -203,6 +204,13 @@ export const Schemas = () => {
                   </Stack>
                 </Box>
 
+                {/* Asset Type Display */}
+                {selectedSchema.asset_type_id && assetTypes.length > 0 && (
+                  <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
+                    Asset Type: {assetTypes.find((at) => at.id === selectedSchema.asset_type_id)?.name || selectedSchema.asset_type_id}
+                  </Typography>
+                )}
+
                 <TableContainer>
                   <Table>
                     <TableHead>
@@ -356,6 +364,11 @@ export const Schemas = () => {
                     </TableBody>
                   </Table>
                 </TableContainer>
+
+                {/* Schema Change Log */}
+                {selectedSchema && selectedSchema.id && (
+                  <SchemaChangeLog schemaId={selectedSchema.id} />
+                )}
               </CardContent>
             </Card>
           ) : (

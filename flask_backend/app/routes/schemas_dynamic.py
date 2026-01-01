@@ -435,6 +435,23 @@ def get_schema_logs(schema_id):
     return jsonify(logs)
 
 
+@schemas_bp.route("/<int:schema_id>/changelog", methods=["GET"])
+def get_schema_changelog(schema_id):
+    """Get the change log for a schema (version history, field changes, etc.)"""
+    from ..models import ChangeLog, User
+    logs = ChangeLog.query.filter_by(schema_id=schema_id).order_by(ChangeLog.timestamp.desc()).all()
+    result = []
+    for log in logs:
+        user_name = None
+        if log.changed_by:
+            user = User.query.get(log.changed_by)
+            user_name = user.username if user else f"User #{log.changed_by}"
+        log_dict = log.to_dict()
+        log_dict["changed_by_name"] = user_name
+        result.append(log_dict)
+    return jsonify(result)
+
+
 # Migration & Impact Analysis Endpoints
 
 @schemas_bp.route("/<int:schema_id>/migration", methods=["POST"])

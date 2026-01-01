@@ -59,7 +59,22 @@ def create_schema_from_metadata(
     """Create a dynamic schema using SchemaManager based on metadata keys and inferred types."""
     from .schema_manager import SchemaManager
 
-    def infer_type(v) -> str:
+
+    def merge_types(existing_type, new_type):
+        # Promote types according to hierarchy
+        type_order = ['integer', 'float', 'string', 'object']
+        if isinstance(existing_type, list):
+            types = set(existing_type)
+        else:
+            types = {existing_type}
+        types.add(new_type)
+        # Promote to the most general type if needed
+        for t in reversed(type_order):
+            if t in types:
+                return t if len(types) == 1 else list(types)
+        return list(types)
+
+    def infer_type(v):
         if isinstance(v, bool):
             return "boolean"
         if isinstance(v, int) and not isinstance(v, bool):
@@ -67,17 +82,35 @@ def create_schema_from_metadata(
         if isinstance(v, float):
             return "float"
         if isinstance(v, list):
-            return "array"
+            # Infer type of items
+            if v:
+                item_types = set(infer_type(item) for item in v)
+                if len(item_types) == 1:
+                    return f"array<{item_types.pop()}>"
+                else:
+                    return f"array<{','.join(sorted(item_types))}>"
+            else:
+                return "array<any>"
         if isinstance(v, dict):
-            return "object"
+            # Nested object: recursively infer subfields
+            return {
+                "type": "object",
+                "fields": {k: infer_type(val) for k, val in v.items()}
+            }
         return "string"
 
+    # Build fields with type promotion/union
     fields = []
+    observed_types = {}
     if isinstance(metadata, dict):
         for k, v in metadata.items():
+            inferred = infer_type(v)
+            if k in observed_types:
+                inferred = merge_types(observed_types[k], inferred)
+            observed_types[k] = inferred
             fields.append({
                 "name": k,
-                "type": infer_type(v),
+                "type": inferred,
                 "required": False
             })
 
