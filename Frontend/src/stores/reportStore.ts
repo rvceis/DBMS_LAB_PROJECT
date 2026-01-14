@@ -11,6 +11,7 @@ export interface ReportTemplate {
   pdf_config: PdfConfig;
   created_by: number;
   is_public: boolean;
+  field_count?: number;
   created_at: string;
   updated_at: string;
 }

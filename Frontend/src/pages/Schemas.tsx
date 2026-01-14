@@ -27,13 +27,15 @@ import {
   IconButton,
   Stack,
 } from '@mui/material';
-import { Edit2, Trash2, Plus } from 'lucide-react';
+import { Edit2, Trash2, Plus, Wand2 } from 'lucide-react';
 import { useSchemaStore } from '@/stores/schemaStore';
 import type { SchemaField } from '@/stores/schemaStore';
 import { useAssetTypesStore } from '@/stores/assetTypesStore';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { ConstraintBuilder } from '@/components/common/ConstraintBuilder';
+import { ExtractMetadataDialog } from '@/components/common/ExtractMetadataDialog';
+import { SchemaChangeLog } from '@/components/SchemaChangeLog';
 
 export const Schemas = () => {
   const { schemas, fetchSchemas, createSchema, updateSchema, selectedSchema, selectSchema, addField, updateField, deleteField } =
@@ -47,6 +49,7 @@ export const Schemas = () => {
   const [editFieldType, setEditFieldType] = useState<SchemaField['field_type']>('string');
   const [editFieldRequired, setEditFieldRequired] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [extractDialog, setExtractDialog] = useState(false);
   const { register, handleSubmit, reset, formState: { errors } } = useForm();
   const { register: registerField, handleSubmit: handleFieldSubmit, reset: resetField, watch: watchField } = useForm();
 
@@ -121,9 +124,18 @@ export const Schemas = () => {
         <Typography variant="h4" sx={{ fontWeight: 700 }}>
           Schemas
         </Typography>
-        <Button variant="contained" startIcon={<Plus size={20} />} onClick={() => setOpenDialog(true)}>
-          New Schema
-        </Button>
+        <Stack direction="row" spacing={2}>
+          <Button
+            variant="outlined"
+            startIcon={<Wand2 size={20} />}
+            onClick={() => setExtractDialog(true)}
+          >
+            Auto-Generate from File
+          </Button>
+          <Button variant="contained" startIcon={<Plus size={20} />} onClick={() => setOpenDialog(true)}>
+            New Schema
+          </Button>
+        </Stack>
       </Box>
 
       <Grid container spacing={3}>
@@ -191,6 +203,13 @@ export const Schemas = () => {
                     </Button>
                   </Stack>
                 </Box>
+
+                {/* Asset Type Display */}
+                {selectedSchema.asset_type_id && assetTypes.length > 0 && (
+                  <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
+                    Asset Type: {assetTypes.find((at) => at.id === selectedSchema.asset_type_id)?.name || selectedSchema.asset_type_id}
+                  </Typography>
+                )}
 
                 <TableContainer>
                   <Table>
@@ -345,6 +364,11 @@ export const Schemas = () => {
                     </TableBody>
                   </Table>
                 </TableContainer>
+
+                {/* Schema Change Log */}
+                {selectedSchema && selectedSchema.id && (
+                  <SchemaChangeLog schemaId={selectedSchema.id} />
+                )}
               </CardContent>
             </Card>
           ) : (
@@ -549,6 +573,16 @@ export const Schemas = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Extract Metadata Dialog */}
+      <ExtractMetadataDialog
+        open={extractDialog}
+        onClose={() => setExtractDialog(false)}
+        onSuccess={(schemaId) => {
+          fetchSchemas();
+          toast.success('Schema auto-generated successfully!');
+        }}
+      />
     </Box>
   );
 };

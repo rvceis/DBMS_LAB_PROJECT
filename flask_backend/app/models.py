@@ -40,18 +40,18 @@ class SchemaModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)
     version = db.Column(db.Integer, nullable=False, default=1)
-    asset_type_id = db.Column(db.Integer, db.ForeignKey("asset_types.id"), nullable=False)
-    parent_schema_id = db.Column(db.Integer, db.ForeignKey("schemas.id"), nullable=True)
+    asset_type_id = db.Column(db.Integer, db.ForeignKey("asset_types.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    parent_schema_id = db.Column(db.Integer, db.ForeignKey("schemas.id", ondelete="SET NULL"), nullable=True)
     allow_additional_fields = db.Column(db.Boolean, default=True)
     is_active = db.Column(db.Boolean, default=True)
     schema_json = db.Column(db.JSON, nullable=True)  # Kept for backward compatibility
-    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    # Relationships
+    # Relationships with proper cascades
     fields = db.relationship('SchemaField', backref='schema', lazy=True, cascade="all, delete-orphan")
-    metadata_records = db.relationship('MetadataRecord', backref='schema', lazy=True)
-    change_logs = db.relationship('ChangeLog', backref='schema', lazy=True)
+    metadata_records = db.relationship('MetadataRecord', backref='schema', lazy=True, cascade="all, delete-orphan")
+    change_logs = db.relationship('ChangeLog', backref='schema', lazy=True, cascade="all, delete-orphan")
     parent = db.relationship('SchemaModel', remote_side=[id], backref='children')
     
     def to_dict(self, include_fields=True):
@@ -75,7 +75,7 @@ class SchemaField(db.Model):
     """Individual field definitions for dynamic schemas"""
     __tablename__ = "schema_fields"
     id = db.Column(db.Integer, primary_key=True)
-    schema_id = db.Column(db.Integer, db.ForeignKey("schemas.id"), nullable=False)
+    schema_id = db.Column(db.Integer, db.ForeignKey("schemas.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
     field_name = db.Column(db.String(128), nullable=False)
     field_type = db.Column(db.String(50), nullable=False)  # string, integer, float, boolean, date, json, array
     is_required = db.Column(db.Boolean, default=False)
@@ -87,7 +87,7 @@ class SchemaField(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships
-    field_values = db.relationship('FieldValue', backref='schema_field', lazy=True)
+    field_values = db.relationship('FieldValue', backref='schema_field', lazy=True, cascade="all, delete-orphan")
     
     __table_args__ = (
         db.UniqueConstraint('schema_id', 'field_name', name='uq_schema_field'),
@@ -113,11 +113,12 @@ class MetadataRecord(db.Model):
     __tablename__ = "metadata_records"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False, default="Unnamed Record")
-    schema_id = db.Column(db.Integer, db.ForeignKey("schemas.id"), nullable=False)  # Now required!
-    asset_type_id = db.Column(db.Integer, db.ForeignKey("asset_types.id"), nullable=True)
-    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    schema_id = db.Column(db.Integer, db.ForeignKey("schemas.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    asset_type_id = db.Column(db.Integer, db.ForeignKey("asset_types.id", ondelete="SET NULL", onupdate="CASCADE"), nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     tag = db.Column(db.String(128), nullable=True)
     metadata_json = db.Column(db.JSON, nullable=True)  # Kept for backward compatibility
+    raw_data = db.Column(db.JSON, nullable=True)  # Store all incoming data, not just metadata
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -144,8 +145,8 @@ class FieldValue(db.Model):
     """EAV (Entity-Attribute-Value) pattern for dynamic field storage"""
     __tablename__ = "field_values"
     id = db.Column(db.Integer, primary_key=True)
-    record_id = db.Column(db.Integer, db.ForeignKey("metadata_records.id"), nullable=False)
-    schema_field_id = db.Column(db.Integer, db.ForeignKey("schema_fields.id"), nullable=False)
+    record_id = db.Column(db.Integer, db.ForeignKey("metadata_records.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    schema_field_id = db.Column(db.Integer, db.ForeignKey("schema_fields.id", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
     
     # Type-specific columns for performance
     value_text = db.Column(db.Text, nullable=True)
@@ -325,6 +326,7 @@ class ReportTemplate(db.Model):
             "created_by": self.created_by,
             "is_public": self.is_public,
             "schedule_enabled": self.schedule_enabled,
+            "field_count": len(self.query_config.get('fields', [])) if self.query_config else 0,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

@@ -33,14 +33,7 @@ interface MetadataStore {
 
   fetchRecords: (filters?: MetadataFilters) => Promise<void>;
   fetchRecordById: (id: number) => Promise<MetadataRecord | null>;
-  createRecord: (data: {
-    name: string;
-    schema_id?: number;
-    asset_type_id: number;
-    values: Record<string, any>;
-    create_new_schema?: boolean;
-    tag?: string;
-  }) => Promise<MetadataRecord>;
+  createRecord: (data: any) => Promise<MetadataRecord>;
   updateRecord: (id: number, data: Partial<MetadataRecord>) => Promise<void>;
   deleteRecord: (id: number) => Promise<void>;
   selectRecord: (record: MetadataRecord | null) => void;
@@ -101,18 +94,28 @@ export const useMetadataStore = create<MetadataStore>((set, get) => ({
   createRecord: async (data) => {
     set({ loading: true, error: null });
     try {
-      const payload: any = {
-        ...data,
-      };
-      if (data.create_new_schema && payload.allow_additional_fields === undefined) {
-        payload.allow_additional_fields = true;
+      // Support FormData uploads (files) or JSON payloads
+      let response: Response;
+      if (data instanceof FormData) {
+        // Send multipart/form-data without setting Content-Type so browser sets boundary
+        response = await fetch(`${API_BASE}/metadata`, {
+          method: 'POST',
+          headers: buildHeaders(false),
+          body: data,
+        });
+      } else {
+        const payload: any = {
+          ...data,
+        };
+        if (data.create_new_schema && payload.allow_additional_fields === undefined) {
+          payload.allow_additional_fields = true;
+        }
+        response = await fetch(`${API_BASE}/metadata`, {
+          method: 'POST',
+          headers: buildHeaders(true),
+          body: JSON.stringify(payload),
+        });
       }
-
-      const response = await fetch(`${API_BASE}/metadata`, {
-        method: 'POST',
-        headers: buildHeaders(true),
-        body: JSON.stringify(payload),
-      });
       if (!response.ok) {
         let message = 'Failed to create record';
         try {

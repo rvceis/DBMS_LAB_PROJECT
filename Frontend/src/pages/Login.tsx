@@ -8,7 +8,7 @@ export const Login = () => {
   const navigate = useNavigate();
   const { login, isAuthenticated, loading, error } = useAuthStore();
   const { register, handleSubmit, formState: { errors } } = useForm({
-    defaultValues: { email: 'admin@test.com', password: 'password' },
+    defaultValues: { email: '', password: '' }, // Remove pre-filled credentials
   });
 
   useEffect(() => {
